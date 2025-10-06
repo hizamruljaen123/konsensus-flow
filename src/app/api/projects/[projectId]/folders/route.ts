@@ -5,11 +5,11 @@ import { getDefaultUser } from '@/lib/user'
 
 export async function POST(
   request: Request,
-  { params }: { params: { projectId: string } },
+  { params }: { params: Promise<{ projectId: string }> },
 ) {
   try {
     const user = await getDefaultUser()
-    const { projectId } = params
+    const { projectId } = await params
     const body = await request.json()
     const name: string | undefined = body?.name
     const parentId: string | null | undefined = body?.parentId ?? null

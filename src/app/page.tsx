@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, lazy, Suspense, useCallback } from 'react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Copy, Download, RefreshCw, Eye, EyeOff, Code2, Image, File, Folder, ChevronDown, ChevronRight, Play, Settings, GitBranch, Terminal, FilePlus, PlusCircle } from 'lucide-react'
+import { Copy, Download, RefreshCw, Eye, EyeOff, Code2, Image, File, Folder, ChevronDown, ChevronRight, Play, Settings, GitBranch, Terminal, FilePlus, PlusCircle, Save } from 'lucide-react'
 import mermaid from 'mermaid'
 import html2canvas from 'html2canvas'
 import { registerPlantUML } from '@/lib/monaco-plantuml'
@@ -14,6 +14,7 @@ import { Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogT
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { useToast } from '@/hooks/use-toast'
 
 // Dynamic import for Monaco Editor to avoid SSR issues
 const Editor = lazy(() => import('@monaco-editor/react'))
@@ -90,6 +91,71 @@ type DiagramTreeNodeProps = {
   folderId: string | null
   selectedDiagramId: string | null
   onSelectDiagram: (projectId: string, diagramId: string, folderId: string | null) => void
+}
+
+const findFolderById = (folders: FolderNode[], folderId: string): FolderNode | null => {
+  for (const folder of folders) {
+    if (folder.id === folderId) {
+      return folder
+    }
+
+    const nested = findFolderById(folder.folders, folderId)
+    if (nested) {
+      return nested
+    }
+  }
+
+  return null
+}
+
+const getDiagramNamesInContext = (project: ProjectNode | null, folderId: string | null): Set<string> => {
+  if (!project) {
+    return new Set()
+  }
+
+  if (!folderId) {
+    return new Set(project.diagrams.map((diagram) => diagram.name.trim()))
+  }
+
+  const folder = findFolderById(project.folders, folderId)
+  if (!folder) {
+    return new Set()
+  }
+
+  return new Set(folder.diagrams.map((diagram) => diagram.name.trim()))
+}
+
+const generateUniqueDiagramName = (baseName: string, existingNames: Set<string>): string => {
+  const trimmedName = baseName.trim()
+  if (!trimmedName) {
+    return trimmedName
+  }
+
+  if (!existingNames.has(trimmedName)) {
+    return trimmedName
+  }
+
+  let index = 1
+  while (true) {
+    const candidate = `${trimmedName}_${index}`
+    if (!existingNames.has(candidate)) {
+      return candidate
+    }
+    index += 1
+  }
+}
+
+const fetchDiagramFromServer = async (projectId: string, diagramId: string) => {
+  const response = await fetch(`/api/projects/${projectId}/diagrams/${diagramId}`, {
+    cache: 'no-store',
+  })
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}))
+    throw new Error(errorBody?.error ?? 'Failed to load diagram')
+  }
+
+  return response.json() as Promise<{ diagram?: DiagramNode & { content?: string; renderedSvg?: string | null } }>
 }
 
 async function fetchProjects(): Promise<ProjectNode[]> {
@@ -328,6 +394,32 @@ function DiagramTreeNode({
   )
 }
 
+async function updateDiagramOnServer(
+  projectId: string,
+  diagramId: string,
+  payload: Partial<{
+    name: string
+    content: string
+    engine: DiagramEngine
+    category: string | null
+    renderedSvg: string | null
+    folderId: string | null
+  }>,
+) {
+  const response = await fetch(`/api/projects/${projectId}/diagrams/${diagramId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}))
+    throw new Error(errorBody?.error ?? 'Failed to update diagram')
+  }
+
+  return response.json()
+}
+
 async function createProjectOnServer(payload: { name: string; description?: string }) {
   const response = await fetch('/api/projects', {
     method: 'POST',
@@ -386,7 +478,10 @@ export default function VSCodeDiagramEditor() {
   const [selectedTemplate, setSelectedTemplate] = useState('')
   const [svgContent, setSvgContent] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState('')
+  const [showErrorDetails, setShowErrorDetails] = useState(false)
+  const [syntaxErrors, setSyntaxErrors] = useState<string[]>([])
   const [theme, setTheme] = useState('vs-dark')
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set())
   const [showTemplates, setShowTemplates] = useState(true)
@@ -394,6 +489,7 @@ export default function VSCodeDiagramEditor() {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null)
   const [selectedDiagramId, setSelectedDiagramId] = useState<string | null>(null)
+  const [currentDiagramName, setCurrentDiagramName] = useState('')
   const [sidebarTab, setSidebarTab] = useState<'projects' | 'templates'>('templates')
   const [expandedProjectNodes, setExpandedProjectNodes] = useState<Set<string>>(new Set())
   const [isProjectDialogOpen, setIsProjectDialogOpen] = useState(false)
@@ -403,7 +499,14 @@ export default function VSCodeDiagramEditor() {
   const [newFolderName, setNewFolderName] = useState('')
   const [directoryError, setDirectoryError] = useState('')
   const [isDirectoryLoading, setIsDirectoryLoading] = useState(false)
+  const [isDiagramDialogOpen, setIsDiagramDialogOpen] = useState(false)
+  const [newDiagramName, setNewDiagramName] = useState('')
+  const [editingDiagramId, setEditingDiagramId] = useState<string | null>(null)
+  const [editingDiagramName, setEditingDiagramName] = useState('')
+  const [isDiagramLoading, setIsDiagramLoading] = useState(false)
   const svgRef = useRef<HTMLDivElement>(null)
+  const diagramFetchToken = useRef(0)
+  const { toast } = useToast()
 
   // Get current templates based on diagram type
   const getCurrentTemplates = () => {
@@ -451,22 +554,131 @@ export default function VSCodeDiagramEditor() {
     }
   }, [loadProjects])
 
-  // Initialize with first template
+  // Initialize with first template when no diagram is selected
   useEffect(() => {
+    if (selectedDiagramId) {
+      return
+    }
+
     const templates = getCurrentTemplates()
     const categories = Object.keys(templates)
-    if (categories.length > 0) {
-      setSelectedCategory(categories[0])
-      setExpandedCategories(new Set([categories[0]]))
-      
-      const firstCategory = templates[categories[0]]
-      const templateNames = Object.keys(firstCategory)
-      if (templateNames.length > 0) {
-        setSelectedTemplate(templateNames[0])
+    if (categories.length === 0) {
+      return
+    }
+
+    setSelectedCategory((prev) => (prev ? prev : categories[0]))
+    setExpandedCategories((prev) => {
+      if (prev.size > 0) {
+        return prev
+      }
+      return new Set([categories[0]])
+    })
+
+    const firstCategory = templates[categories[0]]
+    const templateNames = Object.keys(firstCategory)
+    if (templateNames.length > 0) {
+      setSelectedTemplate((prev) => (prev ? prev : templateNames[0]))
+      if (!code) {
         setCode(firstCategory[templateNames[0]])
       }
     }
-  }, [diagramType])
+  }, [diagramType, selectedDiagramId, code])
+
+  const loadDiagramContent = useCallback(
+    async (projectId: string, diagramId: string) => {
+      diagramFetchToken.current += 1
+      const requestId = diagramFetchToken.current
+      setIsDiagramLoading(true)
+      try {
+        const data = await fetchDiagramFromServer(projectId, diagramId)
+        if (requestId !== diagramFetchToken.current) {
+          return
+        }
+        const diagram = data?.diagram
+        if (!diagram) {
+          throw new Error('Diagram tidak ditemukan')
+        }
+
+        setCurrentDiagramName(diagram.name ?? '')
+        setCode(diagram.content ?? '')
+        setSvgContent(diagram.renderedSvg ?? '')
+        setError('')
+        setSyntaxErrors([])
+        setShowErrorDetails(false)
+        const nextDiagramType: DiagramType =
+          diagram.engine === 'PLANTUML' ? 'plantuml' : 'mermaid'
+        setDiagramType(nextDiagramType)
+        setSelectedCategory(diagram.category ?? '')
+        setSelectedTemplate('')
+      } catch (err) {
+        if (requestId !== diagramFetchToken.current) {
+          return
+        }
+        console.error(err)
+        setDirectoryError(
+          err instanceof Error ? err.message : 'Gagal memuat diagram terpilih',
+        )
+      } finally {
+        if (requestId === diagramFetchToken.current) {
+          setIsDiagramLoading(false)
+        }
+      }
+    },
+    [],
+  )
+
+  useEffect(() => {
+    if (selectedProjectId && selectedDiagramId) {
+      void loadDiagramContent(selectedProjectId, selectedDiagramId)
+    } else {
+      diagramFetchToken.current += 1
+      setIsDiagramLoading(false)
+      setCurrentDiagramName('')
+    }
+  }, [selectedProjectId, selectedDiagramId, loadDiagramContent])
+
+  const handleSaveDiagram = useCallback(async () => {
+    if (!selectedProjectId || !selectedDiagramId) {
+      setDirectoryError('Pilih diagram terlebih dahulu sebelum menyimpan')
+      return
+    }
+
+    try {
+      setIsSaving(true)
+      setDirectoryError('')
+      await updateDiagramOnServer(selectedProjectId, selectedDiagramId, {
+        content: code,
+        renderedSvg: svgContent || null,
+      })
+      toast({
+        title: 'Diagram tersimpan',
+        description: `Perubahan pada ${currentDiagramName || 'diagram'} berhasil disimpan.`,
+      })
+    } catch (err) {
+      console.error(err)
+
+      if (err instanceof Error) {
+        const errorMessage = err.message
+
+        if (errorMessage.includes('fetch') || errorMessage.includes('network')) {
+          setDirectoryError('Kesalahan koneksi. Periksa koneksi internet Anda dan coba lagi.')
+          return
+        }
+
+        if (errorMessage.includes('prisma')) {
+          setDirectoryError('Terjadi kesalahan database. Silakan coba lagi.')
+          return
+        }
+
+        setDirectoryError(errorMessage)
+        return
+      }
+
+      setDirectoryError('Gagal menyimpan diagram')
+    } finally {
+      setIsSaving(false)
+    }
+  }, [selectedProjectId, selectedDiagramId, code, svgContent, toast, currentDiagramName])
 
   // Handle keyboard shortcuts
   useEffect(() => {
@@ -481,8 +693,13 @@ export default function VSCodeDiagramEditor() {
         e.preventDefault()
         createNewDocument()
       }
-      // Ctrl/Cmd + S to copy
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+      // Ctrl/Cmd + S to save
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault()
+        handleSaveDiagram()
+      }
+      // Ctrl/Cmd + Shift + C to copy
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'c') {
         e.preventDefault()
         copyToClipboard()
       }
@@ -496,11 +713,18 @@ export default function VSCodeDiagramEditor() {
         e.preventDefault()
         downloadPNG()
       }
+      // Escape to dismiss errors
+      if (e.key === 'Escape' && error) {
+        e.preventDefault()
+        setError('')
+        setSyntaxErrors([])
+        setShowErrorDetails(false)
+      }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [code, svgContent, isLoading])
+  }, [code, svgContent, isLoading, error, showErrorDetails, handleSaveDiagram])
 
   // Initialize Mermaid
   useEffect(() => {
@@ -523,11 +747,16 @@ export default function VSCodeDiagramEditor() {
   const renderDiagram = async () => {
     if (!code.trim()) {
       setSvgContent('')
+      setError('')
+      setSyntaxErrors([])
+      setShowErrorDetails(false)
       return
     }
 
     setIsLoading(true)
     setError('')
+    setSyntaxErrors([])
+    setShowErrorDetails(false)
     
     try {
       if (diagramType === 'mermaid') {
@@ -546,8 +775,46 @@ export default function VSCodeDiagramEditor() {
         setSvgContent(data.svg)
       }
     } catch (err) {
-      setError(`Failed to render ${diagramType === 'mermaid' ? 'Mermaid' : 'PlantUML'} diagram. Please check your syntax.`)
-      console.error(err)
+      console.error('Render error:', err)
+
+      // Enhanced error parsing for better syntax error messages
+      let errorMessage = `Failed to render ${diagramType === 'mermaid' ? 'Mermaid' : 'PlantUML'} diagram. Please check your syntax.`
+      let syntaxErrorLines: string[] = []
+
+      if (err instanceof Error) {
+        const errorString = err.message
+
+        // Parse PlantUML-style errors
+        if (diagramType === 'plantuml') {
+          const plantUMLErrorMatch = errorString.match(/Parse error on line (\d+):(.*?)\n(-+)/)
+          if (plantUMLErrorMatch) {
+            const lineNum = plantUMLErrorMatch[1]
+            const context = plantUMLErrorMatch[2].trim()
+            const pointer = plantUMLErrorMatch[3]
+
+            syntaxErrorLines = [
+              `Error: Parse error on line ${lineNum}:`,
+              `...${context}`,
+              `${pointer}^`,
+              `Expecting valid PlantUML syntax, got invalid token`
+            ]
+          } else {
+            // Generic parsing for other PlantUML errors
+            const lines = errorString.split('\n').filter(line => line.trim())
+            syntaxErrorLines = lines.map(line => line.trim())
+          }
+        }
+
+        // For Mermaid errors, try to extract useful information
+        if (diagramType === 'mermaid' && !syntaxErrorLines.length) {
+          const lines = errorString.split('\n').filter(line => line.trim())
+          syntaxErrorLines = lines.map(line => line.trim())
+        }
+      }
+
+      setError(errorMessage)
+      setSyntaxErrors(syntaxErrorLines)
+      setShowErrorDetails(true)
     } finally {
       setIsLoading(false)
     }
@@ -627,6 +894,31 @@ export default function VSCodeDiagramEditor() {
       }
     } catch (err) {
       console.error(err)
+
+      // Enhanced error handling for specific error types
+      if (err instanceof Error) {
+        const errorMessage = err.message
+
+        // Handle unique constraint errors
+        if (errorMessage.includes('Unique constraint failed')) {
+          setDirectoryError(`Project dengan nama "${newProjectName}" sudah ada. Silakan gunakan nama yang berbeda.`)
+          return
+        }
+
+        // Handle other specific errors
+        if (errorMessage.includes('prisma')) {
+          setDirectoryError('Terjadi kesalahan database. Silakan coba lagi.')
+          return
+        }
+
+        // Handle network/API errors
+        if (errorMessage.includes('fetch') || errorMessage.includes('network')) {
+          setDirectoryError('Kesalahan koneksi. Periksa koneksi internet Anda dan coba lagi.')
+          return
+        }
+      }
+
+      // Fallback for unknown errors
       setDirectoryError(err instanceof Error ? err.message : 'Gagal membuat project')
     } finally {
       setIsDirectoryLoading(false)
@@ -684,6 +976,31 @@ export default function VSCodeDiagramEditor() {
       }
     } catch (err) {
       console.error(err)
+
+      // Enhanced error handling for specific error types
+      if (err instanceof Error) {
+        const errorMessage = err.message
+
+        // Handle unique constraint errors
+        if (errorMessage.includes('Unique constraint failed')) {
+          setDirectoryError(`Folder dengan nama "${newFolderName}" sudah ada di project ini. Silakan gunakan nama yang berbeda.`)
+          return
+        }
+
+        // Handle other specific errors
+        if (errorMessage.includes('prisma')) {
+          setDirectoryError('Terjadi kesalahan database. Silakan coba lagi.')
+          return
+        }
+
+        // Handle network/API errors
+        if (errorMessage.includes('fetch') || errorMessage.includes('network')) {
+          setDirectoryError('Kesalahan koneksi. Periksa koneksi internet Anda dan coba lagi.')
+          return
+        }
+      }
+
+      // Fallback for unknown errors
       setDirectoryError(err instanceof Error ? err.message : 'Gagal membuat folder')
     } finally {
       setIsDirectoryLoading(false)
@@ -699,6 +1016,7 @@ export default function VSCodeDiagramEditor() {
     },
     targetFolderId?: string | null,
   ) => {
+    let finalDiagramName = diagram.name.trim()
     try {
       const projectId = selectedProjectId
       if (!projectId) {
@@ -709,8 +1027,11 @@ export default function VSCodeDiagramEditor() {
       setIsDirectoryLoading(true)
       const folderIdToUse =
         typeof targetFolderId === 'undefined' ? selectedFolderId : targetFolderId
+      const project = projects.find((item) => item.id === projectId) ?? null
+      const existingNames = getDiagramNamesInContext(project, folderIdToUse ?? null)
+      finalDiagramName = generateUniqueDiagramName(finalDiagramName, existingNames)
       const result = await createDiagramOnServer(projectId, {
-        name: diagram.name,
+        name: finalDiagramName,
         engine: diagram.engine,
         content: diagram.content,
         category: diagram.category ?? null,
@@ -720,6 +1041,7 @@ export default function VSCodeDiagramEditor() {
       const newDiagramId = result?.diagram?.id ?? null
       const newDiagramFolderId = result?.diagram?.folderId ?? null
 
+      setCurrentDiagramName(result?.diagram?.name ?? finalDiagramName)
       await loadProjects()
       setSelectedProjectId(projectId)
       setSelectedFolderId(newDiagramFolderId)
@@ -735,6 +1057,31 @@ export default function VSCodeDiagramEditor() {
       return result?.diagram ?? null
     } catch (err) {
       console.error(err)
+
+      // Enhanced error handling for specific error types
+      if (err instanceof Error) {
+        const errorMessage = err.message
+
+        // Handle unique constraint errors
+        if (errorMessage.includes('Unique constraint failed')) {
+          setDirectoryError(`Diagram dengan nama "${finalDiagramName}" sudah ada di folder ini. Silakan gunakan nama yang berbeda.`)
+          return
+        }
+
+        // Handle other specific errors
+        if (errorMessage.includes('prisma')) {
+          setDirectoryError('Terjadi kesalahan database. Silakan coba lagi.')
+          return
+        }
+
+        // Handle network/API errors
+        if (errorMessage.includes('fetch') || errorMessage.includes('network')) {
+          setDirectoryError('Kesalahan koneksi. Periksa koneksi internet Anda dan coba lagi.')
+          return
+        }
+      }
+
+      // Fallback for unknown errors
       setDirectoryError(err instanceof Error ? err.message : 'Gagal menyimpan diagram')
     } finally {
       setIsDirectoryLoading(false)
@@ -745,6 +1092,10 @@ export default function VSCodeDiagramEditor() {
     try {
       if (navigator.clipboard && window.isSecureContext) {
         await navigator.clipboard.writeText(code)
+        // Clear errors on successful copy
+        setError('')
+        setSyntaxErrors([])
+        setShowErrorDetails(false)
       } else {
         // Fallback for older browsers or non-secure contexts
         const textArea = document.createElement('textarea')
@@ -757,6 +1108,10 @@ export default function VSCodeDiagramEditor() {
         textArea.select()
         document.execCommand('copy')
         document.body.removeChild(textArea)
+        // Clear errors on successful copy
+        setError('')
+        setSyntaxErrors([])
+        setShowErrorDetails(false)
       }
     } catch (err) {
       console.error('Failed to copy text: ', err)
@@ -829,17 +1184,177 @@ export default function VSCodeDiagramEditor() {
     setCode('')
     setSvgContent('')
     setError('')
+    setSyntaxErrors([])
+    setShowErrorDetails(false)
   }
 
   const createNewDocument = useCallback(() => {
     setCode('')
     setSvgContent('')
     setError('')
+    setSyntaxErrors([])
+    setShowErrorDetails(false)
     setSelectedCategory('')
     setSelectedTemplate('')
     // Reset expanded categories
     setExpandedCategories(new Set())
+    setSelectedDiagramId(null)
+    setCurrentDiagramName('')
   }, [])
+
+  const handleDiagramNameUpdate = async (diagramId: string, newName: string) => {
+    try {
+      if (!selectedProjectId) return
+
+      setDirectoryError('')
+      setIsDirectoryLoading(true)
+
+      await updateDiagramOnServer(selectedProjectId, diagramId, { name: newName.trim() })
+
+      // Reload projects to reflect the name change
+      await loadProjects()
+
+      // Clear editing state
+      setEditingDiagramId(null)
+      setEditingDiagramName('')
+
+    } catch (err) {
+      console.error(err)
+
+      if (err instanceof Error) {
+        const errorMessage = err.message
+
+        if (errorMessage.includes('Unique constraint failed')) {
+          setDirectoryError(`Diagram dengan nama "${newName}" sudah ada di folder ini. Silakan gunakan nama yang berbeda.`)
+          return
+        }
+
+        if (errorMessage.includes('prisma')) {
+          setDirectoryError('Terjadi kesalahan database. Silakan coba lagi.')
+          return
+        }
+
+        if (errorMessage.includes('fetch') || errorMessage.includes('network')) {
+          setDirectoryError('Kesalahan koneksi. Periksa koneksi internet Anda dan coba lagi.')
+          return
+        }
+      }
+
+      setDirectoryError(err instanceof Error ? err.message : 'Gagal mengupdate nama diagram')
+    } finally {
+      setShowErrorDetails(false)
+    }
+  }
+
+  const handleDiagramCreate = async () => {
+    try {
+      if (!newDiagramName.trim()) {
+        setDirectoryError('Nama diagram wajib diisi')
+        return
+      }
+
+      if (!selectedProjectId) {
+        setDirectoryError('Pilih project terlebih dahulu')
+        return
+      }
+
+      setDirectoryError('')
+      setIsDirectoryLoading(true)
+
+      const templates = getCurrentTemplates()
+      const templateContent = selectedCategory && selectedTemplate
+        ? templates[selectedCategory]?.[selectedTemplate]
+        : ''
+
+      if (!templateContent) {
+        setDirectoryError('Pilih template terlebih dahulu sebelum membuat diagram baru')
+        return
+      }
+
+      const generatedName = generateUniqueDiagramName(
+        newDiagramName,
+        getDiagramNamesInContext(
+          projects.find((project) => project.id === selectedProjectId) ?? null,
+          selectedFolderId ?? null,
+        ),
+      )
+
+      const result = await createDiagramOnServer(selectedProjectId, {
+        name: generatedName,
+        engine: diagramType === 'mermaid' ? 'MERMAID' : 'PLANTUML',
+        content: templateContent,
+        category: selectedCategory || null,
+        folderId: selectedFolderId,
+      })
+
+      const newDiagramId = result?.diagram?.id ?? null
+      const newDiagramFolderId = result?.diagram?.folderId ?? null
+
+      setNewDiagramName('')
+      setIsDiagramDialogOpen(false)
+      setCurrentDiagramName(generatedName)
+
+      await loadProjects()
+      setSelectedProjectId(selectedProjectId)
+      setSelectedFolderId(newDiagramFolderId)
+      setSelectedDiagramId(newDiagramId)
+
+      if (newDiagramFolderId) {
+        setExpandedProjectNodes((prev) => {
+          const next = new Set(prev)
+          next.add(newDiagramFolderId)
+          next.add(selectedProjectId)
+          return next
+        })
+      }
+
+    } catch (err) {
+      console.error(err)
+
+      if (err instanceof Error) {
+        const errorMessage = err.message
+
+        if (errorMessage.includes('Unique constraint failed')) {
+          setDirectoryError(`Diagram dengan nama "${newDiagramName}" sudah ada di folder ini. Silakan gunakan nama yang berbeda.`)
+          return
+        }
+
+        if (errorMessage.includes('prisma')) {
+          setDirectoryError('Terjadi kesalahan database. Silakan coba lagi.')
+          return
+        }
+
+        if (errorMessage.includes('fetch') || errorMessage.includes('network')) {
+          setDirectoryError('Kesalahan koneksi. Periksa koneksi internet Anda dan coba lagi.')
+          return
+        }
+      }
+
+      setDirectoryError(err instanceof Error ? err.message : 'Gagal membuat diagram')
+    } finally {
+      setIsDirectoryLoading(false)
+    }
+  }
+
+  const handleDiagramDoubleClick = (diagramId: string, currentName: string) => {
+    setEditingDiagramId(diagramId)
+    setEditingDiagramName(currentName)
+  }
+
+  const handleDiagramEditSubmit = () => {
+    if (editingDiagramId && editingDiagramName.trim()) {
+      handleDiagramNameUpdate(editingDiagramId, editingDiagramName.trim())
+    }
+  }
+
+  const handleDiagramEditKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleDiagramEditSubmit()
+    } else if (e.key === 'Escape') {
+      setEditingDiagramId(null)
+      setEditingDiagramName('')
+    }
+  }
 
   return (
     <div className="h-screen flex flex-col bg-[#1e1e1e] text-white overflow-hidden">
@@ -1059,6 +1574,11 @@ export default function VSCodeDiagramEditor() {
         {isDirectoryLoading && (
           <div className="absolute top-4 right-4 bg-blue-900/70 text-white px-3 py-1 rounded text-xs z-50">
             Memuat...
+          </div>
+        )}
+        {isDiagramLoading && (
+          <div className="absolute top-4 left-4 bg-blue-900/70 text-white px-3 py-1 rounded text-xs z-50">
+            Memuat diagram...
           </div>
         )}
         {/* Sidebar */}
@@ -1355,9 +1875,48 @@ export default function VSCodeDiagramEditor() {
               
               {error && (
                 <div className="flex items-center justify-center h-full">
-                  <div className="text-center text-red-500">
-                    <p className="mb-2">{error}</p>
-                    <Button onClick={renderDiagram} size="sm">Try Again</Button>
+                  <div className="text-center text-red-500 max-w-md">
+                    <div className="mb-4">
+                      <p className="mb-2 font-semibold">{error}</p>
+                      {syntaxErrors.length > 0 && (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <button
+                              onClick={() => setShowErrorDetails(!showErrorDetails)}
+                              className="text-xs bg-red-900 hover:bg-red-800 px-3 py-1 rounded transition-colors"
+                            >
+                              {showErrorDetails ? 'Hide Details' : 'Show Details'}
+                            </button>
+                            <button
+                              onClick={() => {
+                                setError('')
+                                setSyntaxErrors([])
+                                setShowErrorDetails(false)
+                              }}
+                              className="text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded transition-colors"
+                              title="Dismiss error"
+                            >
+                              ✕
+                            </button>
+                          </div>
+
+                          {showErrorDetails && (
+                            <div className="bg-red-950 border border-red-800 rounded p-3 text-left max-h-48 overflow-y-auto">
+                              <div className="font-mono text-xs text-red-300 space-y-1">
+                                {syntaxErrors.map((errorLine, index) => (
+                                  <div key={index} className="whitespace-pre-wrap">
+                                    {errorLine}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <Button onClick={renderDiagram} size="sm" className="bg-red-700 hover:bg-red-600">
+                      Try Again
+                    </Button>
                   </div>
                 </div>
               )}
@@ -1385,6 +1944,12 @@ export default function VSCodeDiagramEditor() {
         <div className="flex items-center gap-4">
           <span>{diagramType === 'mermaid' ? 'Mermaid' : 'PlantUML'}</span>
           <span>{code.split('\n').length} lines</span>
+          {error && (
+            <span className="flex items-center gap-1 text-red-300">
+              <span className="text-red-400">⚠</span>
+              Syntax Error
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-4">
           <span>{selectedTemplate || 'No template'}</span>

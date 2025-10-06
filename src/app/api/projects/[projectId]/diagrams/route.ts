@@ -12,11 +12,11 @@ const engineMap: Record<string, DiagramEngine> = {
 
 export async function POST(
   request: Request,
-  { params }: { params: { projectId: string } },
+  { params }: { params: Promise<{ projectId: string }> },
 ) {
   try {
     const user = await getDefaultUser()
-    const { projectId } = params
+    const { projectId } = await params
     const body = await request.json()
     const name: string | undefined = body?.name
     const folderId: string | null | undefined = body?.folderId ?? null
@@ -53,6 +53,12 @@ export async function POST(
     return NextResponse.json({ diagram })
   } catch (error) {
     console.error('Failed to create diagram', error)
-    return NextResponse.json({ error: 'Failed to create diagram' }, { status: 500 })
+
+    // Return the actual error message for better frontend handling
+    const errorMessage = error instanceof Error ? error.message : 'Failed to create diagram'
+    return NextResponse.json({
+      error: errorMessage,
+      details: error instanceof Error ? error.stack : undefined
+    }, { status: 500 })
   }
 }
