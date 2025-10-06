@@ -30,6 +30,8 @@ type DiagramNode = {
   category: string | null
   folderId: string | null
   projectId: string
+  content?: string
+  renderedSvg?: string | null
 }
 
 type FolderNode = {
@@ -39,6 +41,8 @@ type FolderNode = {
   projectId: string
   diagrams: DiagramNode[]
   folders: FolderNode[]
+  createdAt: Date
+  updatedAt: Date
 }
 
 type ProjectNode = {
@@ -47,19 +51,281 @@ type ProjectNode = {
   description: string | null
   diagrams: DiagramNode[]
   folders: FolderNode[]
+  createdAt: Date
+  updatedAt: Date
 }
 
 type ProjectApiResponse = {
   projects: ProjectNode[]
 }
 
+type ProjectTreeProps = {
+  project: ProjectNode
+  expandedNodes: Set<string>
+  selectedProjectId: string | null
+  selectedFolderId: string | null
+  selectedDiagramId: string | null
+  onToggleNode: (nodeId: string) => void
+  onSelectProject: (projectId: string) => void
+  onSelectFolder: (projectId: string, folderId: string | null) => void
+  onSelectDiagram: (projectId: string, diagramId: string, folderId: string | null) => void
+  onCreateDiagram: (projectId: string, folderId: string | null) => void
+}
+
+type FolderTreeProps = {
+  projectId: string
+  folder: FolderNode
+  expandedNodes: Set<string>
+  selectedFolderId: string | null
+  selectedDiagramId: string | null
+  onToggleNode: (nodeId: string) => void
+  onSelectFolder: (projectId: string, folderId: string | null) => void
+  onSelectDiagram: (projectId: string, diagramId: string, folderId: string | null) => void
+  onCreateDiagram: (projectId: string, folderId: string | null) => void
+}
+
+type DiagramTreeNodeProps = {
+  projectId: string
+  diagram: DiagramNode
+  folderId: string | null
+  selectedDiagramId: string | null
+  onSelectDiagram: (projectId: string, diagramId: string, folderId: string | null) => void
+}
+
 async function fetchProjects(): Promise<ProjectNode[]> {
   const response = await fetch('/api/projects', { cache: 'no-store' })
+
   if (!response.ok) {
     throw new Error('Failed to fetch projects')
   }
+
   const data = (await response.json()) as ProjectApiResponse
   return data.projects
+}
+
+function ProjectTree({
+  project,
+  expandedNodes,
+  selectedProjectId,
+  selectedFolderId,
+  selectedDiagramId,
+  onToggleNode,
+  onSelectProject,
+  onSelectFolder,
+  onSelectDiagram,
+  onCreateDiagram,
+}: ProjectTreeProps) {
+  const hasChildren = project.folders.length > 0 || project.diagrams.length > 0
+  const isExpanded = hasChildren ? expandedNodes.has(project.id) : false
+  const isSelectedProject =
+    selectedProjectId === project.id && !selectedFolderId && !selectedDiagramId
+
+  const handleSelectProject = () => {
+    onSelectProject(project.id)
+    if (hasChildren && !isExpanded) {
+      onToggleNode(project.id)
+    }
+  }
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center gap-2 px-2 py-1 text-sm">
+        {hasChildren ? (
+          <button
+            type="button"
+            onClick={() => onToggleNode(project.id)}
+            className="text-gray-400 hover:text-gray-100 transition-colors"
+            aria-label={isExpanded ? 'Collapse project' : 'Expand project'}
+          >
+            {isExpanded ? (
+              <ChevronDown className="w-3 h-3" />
+            ) : (
+              <ChevronRight className="w-3 h-3" />
+            )}
+          </button>
+        ) : (
+          <span className="w-3 h-3" />
+        )}
+        <div className="flex-1 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleSelectProject}
+            className={`flex-1 text-left flex items-center gap-2 rounded px-2 py-1 transition-colors ${
+              isSelectedProject ? 'bg-[#094771] text-white' : 'text-gray-300 hover:bg-[#2a2d2e]'
+            }`}
+          >
+            <GitBranch className="w-3 h-3 text-sky-400" />
+            <span className="truncate">{project.name}</span>
+          </button>
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation()
+              onCreateDiagram(project.id, null)
+            }}
+            className="p-1 rounded hover:bg-[#2a2a2e] text-gray-300"
+            title="Tambah diagram ke project"
+          >
+            <PlusCircle className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {hasChildren && isExpanded && (
+        <div className="ml-5 pl-3 border-l border-[#2a2a2a] space-y-1">
+          {project.diagrams.map((diagram) => (
+            <DiagramTreeNode
+              key={diagram.id}
+              projectId={project.id}
+              diagram={diagram}
+              folderId={null}
+              selectedDiagramId={selectedDiagramId}
+              onSelectDiagram={onSelectDiagram}
+            />
+          ))}
+
+          {project.folders.map((folder) => (
+            <FolderTree
+              key={folder.id}
+              projectId={project.id}
+              folder={folder}
+              expandedNodes={expandedNodes}
+              selectedFolderId={selectedFolderId}
+              selectedDiagramId={selectedDiagramId}
+              onToggleNode={onToggleNode}
+              onSelectFolder={onSelectFolder}
+              onSelectDiagram={onSelectDiagram}
+              onCreateDiagram={onCreateDiagram}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function FolderTree({
+  projectId,
+  folder,
+  expandedNodes,
+  selectedFolderId,
+  selectedDiagramId,
+  onToggleNode,
+  onSelectFolder,
+  onSelectDiagram,
+  onCreateDiagram,
+}: FolderTreeProps) {
+  const hasChildren = folder.folders.length > 0 || folder.diagrams.length > 0
+  const isExpanded = hasChildren ? expandedNodes.has(folder.id) : false
+  const isSelectedFolder = selectedFolderId === folder.id
+
+  const handleSelectFolder = () => {
+    onSelectFolder(projectId, folder.id)
+    if (hasChildren && !isExpanded) {
+      onToggleNode(folder.id)
+    }
+  }
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center gap-2 px-2 py-1 text-xs">
+        {hasChildren ? (
+          <button
+            type="button"
+            onClick={() => onToggleNode(folder.id)}
+            className="text-gray-500 hover:text-gray-200 transition-colors"
+            aria-label={isExpanded ? 'Collapse folder' : 'Expand folder'}
+          >
+            {isExpanded ? (
+              <ChevronDown className="w-3 h-3" />
+            ) : (
+              <ChevronRight className="w-3 h-3" />
+            )}
+          </button>
+        ) : (
+          <span className="w-3 h-3" />
+        )}
+        <div className="flex-1 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleSelectFolder}
+            className={`flex-1 text-left flex items-center gap-2 rounded px-2 py-1 transition-colors ${
+              isSelectedFolder ? 'bg-[#0f5c8d] text-white' : 'text-gray-300 hover:bg-[#2a2d2e]'
+            }`}
+          >
+            <Folder className="w-3 h-3 text-yellow-500" />
+            <span className="truncate">{folder.name}</span>
+          </button>
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation()
+              onCreateDiagram(projectId, folder.id)
+            }}
+            className="p-1 rounded hover:bg-[#2a2a2e] text-gray-300"
+            title="Tambah diagram ke folder"
+          >
+            <PlusCircle className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {hasChildren && isExpanded && (
+        <div className="ml-5 pl-3 border-l border-[#2a2a2a] space-y-1">
+          {folder.diagrams.map((diagram) => (
+            <DiagramTreeNode
+              key={diagram.id}
+              projectId={projectId}
+              diagram={diagram}
+              folderId={folder.id}
+              selectedDiagramId={selectedDiagramId}
+              onSelectDiagram={onSelectDiagram}
+            />
+          ))}
+
+          {folder.folders.map((child) => (
+            <FolderTree
+              key={child.id}
+              projectId={projectId}
+              folder={child}
+              expandedNodes={expandedNodes}
+              selectedFolderId={selectedFolderId}
+              selectedDiagramId={selectedDiagramId}
+              onToggleNode={onToggleNode}
+              onSelectFolder={onSelectFolder}
+              onSelectDiagram={onSelectDiagram}
+              onCreateDiagram={onCreateDiagram}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function DiagramTreeNode({
+  projectId,
+  diagram,
+  folderId,
+  selectedDiagramId,
+  onSelectDiagram,
+}: DiagramTreeNodeProps) {
+  const isSelected = selectedDiagramId === diagram.id
+  const engineLabel = diagram.engine.toLowerCase()
+
+  return (
+    <button
+      type="button"
+      onClick={() => onSelectDiagram(projectId, diagram.id, folderId)}
+      className={`w-full flex items-center gap-2 px-2 py-1 rounded text-xs transition-colors ${
+        isSelected ? 'bg-[#18527a] text-white' : 'text-gray-400 hover:bg-[#2a2a2e]'
+      }`}
+    >
+      <File className="w-3 h-3" />
+      <span className="flex-1 truncate">{diagram.name}</span>
+      <span className="text-[10px] uppercase text-gray-500">{engineLabel}</span>
+    </button>
+  )
 }
 
 async function createProjectOnServer(payload: { name: string; description?: string }) {
@@ -125,8 +391,11 @@ export default function VSCodeDiagramEditor() {
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set())
   const [showTemplates, setShowTemplates] = useState(true)
   const [projects, setProjects] = useState<ProjectNode[]>([])
-  const [selectedProjectId, setSelectedProjectId] = useState<string>('')
-  const [selectedFolderId, setSelectedFolderId] = useState<string>('')
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null)
+  const [selectedDiagramId, setSelectedDiagramId] = useState<string | null>(null)
+  const [sidebarTab, setSidebarTab] = useState<'projects' | 'templates'>('templates')
+  const [expandedProjectNodes, setExpandedProjectNodes] = useState<Set<string>>(new Set())
   const [isProjectDialogOpen, setIsProjectDialogOpen] = useState(false)
   const [isFolderDialogOpen, setIsFolderDialogOpen] = useState(false)
   const [newProjectName, setNewProjectName] = useState('')
@@ -147,11 +416,24 @@ export default function VSCodeDiagramEditor() {
       setDirectoryError('')
       const projectData = await fetchProjects()
       setProjects(projectData)
-      if (projectData.length > 0) {
-        setSelectedProjectId((current) => current || projectData[0].id)
-      } else {
-        setSelectedProjectId('')
-      }
+      setSelectedProjectId((current) => {
+        if (projectData.length === 0) {
+          return null
+        }
+
+        if (current && projectData.some((project) => project.id === current)) {
+          return current
+        }
+
+        return projectData[0].id
+      })
+      setSelectedFolderId(null)
+      setSelectedDiagramId(null)
+      setExpandedProjectNodes((prev) => {
+        const next = new Set(prev)
+        projectData.forEach((project) => next.add(project.id))
+        return next
+      })
     } catch (fetchError) {
       console.error(fetchError)
       setDirectoryError('Gagal memuat daftar project dari server')
@@ -307,7 +589,7 @@ export default function VSCodeDiagramEditor() {
     }, [])
   }
 
-  const getFolderName = (id: string | null) => {
+  const getFolderName = (id: string | null | undefined) => {
     if (!id) return 'Root'
     const project = getCurrentProject()
     if (!project) return 'Root'
@@ -324,14 +606,25 @@ export default function VSCodeDiagramEditor() {
       }
       setIsDirectoryLoading(true)
       setDirectoryError('')
-      await createProjectOnServer({
+      const result = await createProjectOnServer({
         name: newProjectName.trim(),
         description: newProjectDescription.trim() || undefined,
       })
+      const newProjectId = result?.project?.id ?? null
       setNewProjectName('')
       setNewProjectDescription('')
       setIsProjectDialogOpen(false)
       await loadProjects()
+      setSelectedProjectId(newProjectId)
+      setSelectedFolderId(null)
+      setSelectedDiagramId(null)
+      if (newProjectId) {
+        setExpandedProjectNodes((prev) => {
+          const next = new Set(prev)
+          next.add(newProjectId)
+          return next
+        })
+      }
     } catch (err) {
       console.error(err)
       setDirectoryError(err instanceof Error ? err.message : 'Gagal membuat project')
@@ -353,14 +646,42 @@ export default function VSCodeDiagramEditor() {
       }
       setIsDirectoryLoading(true)
       setDirectoryError('')
-      await createFolderOnServer(projectId, {
+      const result = await createFolderOnServer(projectId, {
         name: newFolderName.trim(),
         parentId: selectedFolderId || null,
       })
+      const newFolderId = result?.folder?.id ?? null
       setNewFolderName('')
-      setSelectedFolderId('')
       setIsFolderDialogOpen(false)
       await loadProjects()
+      setSelectedProjectId(projectId)
+      setSelectedFolderId(newFolderId)
+      setSelectedDiagramId(null)
+      setExpandedProjectNodes((prev) => {
+        const next = new Set(prev)
+        next.add(projectId)
+        if (newFolderId) {
+          next.add(newFolderId)
+        }
+        return next
+      })
+
+      if (newFolderId && selectedCategory && selectedTemplate) {
+        const templates = getCurrentTemplates()
+        const templateContent = templates[selectedCategory]?.[selectedTemplate]
+
+        if (templateContent) {
+          await handleDiagramCreateFromTemplate(
+            {
+              name: selectedTemplate,
+              engine: diagramType === 'mermaid' ? 'MERMAID' : 'PLANTUML',
+              content: templateContent,
+              category: selectedCategory,
+            },
+            newFolderId,
+          )
+        }
+      }
     } catch (err) {
       console.error(err)
       setDirectoryError(err instanceof Error ? err.message : 'Gagal membuat folder')
@@ -369,12 +690,15 @@ export default function VSCodeDiagramEditor() {
     }
   }
 
-  const handleDiagramCreateFromTemplate = async (diagram: {
-    name: string
-    engine: DiagramEngine
-    content: string
-    category?: string | null
-  }) => {
+  const handleDiagramCreateFromTemplate = async (
+    diagram: {
+      name: string
+      engine: DiagramEngine
+      content: string
+      category?: string | null
+    },
+    targetFolderId?: string | null,
+  ) => {
     try {
       const projectId = selectedProjectId
       if (!projectId) {
@@ -383,14 +707,32 @@ export default function VSCodeDiagramEditor() {
       }
       setDirectoryError('')
       setIsDirectoryLoading(true)
-      await createDiagramOnServer(projectId, {
+      const folderIdToUse =
+        typeof targetFolderId === 'undefined' ? selectedFolderId : targetFolderId
+      const result = await createDiagramOnServer(projectId, {
         name: diagram.name,
         engine: diagram.engine,
         content: diagram.content,
         category: diagram.category ?? null,
-        folderId: selectedFolderId || null,
+        folderId: folderIdToUse,
       })
+
+      const newDiagramId = result?.diagram?.id ?? null
+      const newDiagramFolderId = result?.diagram?.folderId ?? null
+
       await loadProjects()
+      setSelectedProjectId(projectId)
+      setSelectedFolderId(newDiagramFolderId)
+      setSelectedDiagramId(newDiagramId)
+      if (newDiagramFolderId) {
+        setExpandedProjectNodes((prev) => {
+          const next = new Set(prev)
+          next.add(newDiagramFolderId)
+          next.add(projectId)
+          return next
+        })
+      }
+      return result?.diagram ?? null
     } catch (err) {
       console.error(err)
       setDirectoryError(err instanceof Error ? err.message : 'Gagal menyimpan diagram')
@@ -518,6 +860,151 @@ export default function VSCodeDiagramEditor() {
               <SelectItem value="plantuml">PlantUML</SelectItem>
             </SelectContent>
           </Select>
+
+          <div className="flex items-center gap-2">
+            <Select
+              value={selectedProjectId ?? undefined}
+              onValueChange={(value) => {
+                if (value === '__empty') {
+                  setSelectedProjectId(null)
+                  setSelectedFolderId(null)
+                  setSelectedDiagramId(null)
+                  return
+                }
+
+                setSelectedProjectId(value)
+                setSelectedFolderId(null)
+                setSelectedDiagramId(null)
+              }}
+            >
+              <SelectTrigger className="w-64 bg-[#3c3c3c] border-[#5a5a5a] text-white">
+                <SelectValue placeholder="Pilih Project" />
+              </SelectTrigger>
+              <SelectContent className="bg-[#3c3c3c] border-[#5a5a5a] max-h-64 overflow-y-auto">
+                {projects.length === 0 ? (
+                  <SelectItem value="__empty" disabled>
+                    Belum ada project
+                  </SelectItem>
+                ) : (
+                  projects.map((project) => (
+                    <SelectItem key={project.id} value={project.id}>
+                      {project.name}
+                    </SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
+
+            <Dialog open={isProjectDialogOpen} onOpenChange={setIsProjectDialogOpen}>
+              <DialogTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="bg-[#3c3c3c] border-[#5a5a5a] hover:bg-[#4a4a4a]"
+                >
+                  <PlusCircle className="w-4 h-4 mr-1" />
+                  Project
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="bg-[#1f1f1f] text-white border border-[#3c3c3c]">
+                <DialogHeader>
+                  <DialogTitle>Buat Project Baru</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 mt-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="project-name">Nama Project</Label>
+                    <Input
+                      id="project-name"
+                      value={newProjectName}
+                      onChange={(event) => setNewProjectName(event.target.value)}
+                      placeholder="Masukkan nama project"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="project-description">Deskripsi</Label>
+                    <Textarea
+                      id="project-description"
+                      value={newProjectDescription}
+                      onChange={(event) => setNewProjectDescription(event.target.value)}
+                      placeholder="Deskripsi opsional"
+                    />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <DialogClose asChild>
+                    <Button variant="ghost">Batal</Button>
+                  </DialogClose>
+                  <Button onClick={handleProjectCreate} disabled={isDirectoryLoading}>
+                    Simpan
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+
+            <Dialog open={isFolderDialogOpen} onOpenChange={setIsFolderDialogOpen}>
+              <DialogTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="bg-[#3c3c3c] border-[#5a5a5a] hover:bg-[#4a4a4a]"
+                  disabled={!selectedProjectId}
+                >
+                  <PlusCircle className="w-4 h-4 mr-1" />
+                  Folder
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="bg-[#1f1f1f] text-white border border-[#3c3c3c]">
+                <DialogHeader>
+                  <DialogTitle>Buat Folder Baru</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 mt-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="folder-name">Nama Folder</Label>
+                    <Input
+                      id="folder-name"
+                      value={newFolderName}
+                      onChange={(event) => setNewFolderName(event.target.value)}
+                      placeholder="Masukkan nama folder"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="folder-parent">Parent Folder</Label>
+                    <Select
+                      value={selectedFolderId ?? '__root'}
+                      onValueChange={(value) => {
+                        if (value === '__root') {
+                          setSelectedFolderId(null)
+                        } else {
+                          setSelectedFolderId(value)
+                        }
+                        setSelectedDiagramId(null)
+                      }}
+                    >
+                      <SelectTrigger className="w-full bg-[#3c3c3c] border-[#5a5a5a] text-white">
+                        <SelectValue placeholder="Root" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-[#3c3c3c] border-[#5a5a5a] max-h-64 overflow-y-auto">
+                        <SelectItem value="__root">Root</SelectItem>
+                        {getFoldersFlat(getCurrentProject()).map((folder) => (
+                          <SelectItem key={folder.id} value={folder.id}>
+                            {folder.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <DialogFooter>
+                  <DialogClose asChild>
+                    <Button variant="ghost">Batal</Button>
+                  </DialogClose>
+                  <Button onClick={handleFolderCreate} disabled={isDirectoryLoading}>
+                    Simpan
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
         
         <div className="flex items-center gap-2">
@@ -563,66 +1050,231 @@ export default function VSCodeDiagramEditor() {
       </div>
 
       {/* Main Content */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden relative">
+        {directoryError && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-red-900/80 text-white px-4 py-2 rounded shadow-md z-50 text-sm">
+            {directoryError}
+          </div>
+        )}
+        {isDirectoryLoading && (
+          <div className="absolute top-4 right-4 bg-blue-900/70 text-white px-3 py-1 rounded text-xs z-50">
+            Memuat...
+          </div>
+        )}
         {/* Sidebar */}
         {showTemplates && (
-          <div className="w-64 bg-[#252526] border-r border-[#3e3e42] flex flex-col">
-            <div className="p-3 border-b border-[#3e3e42]">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-sm font-semibold text-gray-300">
-                  <Folder className="w-4 h-4" />
-                  Templates
-                </div>
-                <Button 
-                  onClick={createNewDocument} 
-                  size="sm" 
-                  variant="ghost" 
-                  className="h-7 px-2 text-xs text-gray-400 hover:text-white hover:bg-[#2a2a2a]"
-                  title="Create new blank document (Ctrl/Cmd + N)"
+          <div className="w-72 bg-[#252526] border-r border-[#3e3e42] flex flex-col">
+            <div className="border-b border-[#3e3e42]">
+              <div className="px-3 pt-3 flex gap-2">
+                <Button
+                  size="sm"
+                  variant={sidebarTab === 'projects' ? 'default' : 'outline'}
+                  className={`${sidebarTab === 'projects' ? 'bg-[#0e639c]' : 'bg-[#2a2d2e] border-[#3e3e42] text-gray-300 hover:bg-[#3a3d3e]'} flex-1`}
+                  onClick={() => setSidebarTab('projects')}
                 >
-                  <FilePlus className="w-3 h-3 mr-1" />
-                  New
+                  Project Directory
+                </Button>
+                <Button
+                  size="sm"
+                  variant={sidebarTab === 'templates' ? 'default' : 'outline'}
+                  className={`${sidebarTab === 'templates' ? 'bg-[#0e639c]' : 'bg-[#2a2d2e] border-[#3e3e42] text-gray-300 hover:bg-[#3a3d3e]'} flex-1`}
+                  onClick={() => setSidebarTab('templates')}
+                >
+                  Templates
                 </Button>
               </div>
-            </div>
-            
-            <div className="flex-1 overflow-y-auto">
-              {Object.entries(getCurrentTemplates()).map(([category, templates]) => (
-                <div key={category} className="border-b border-[#2a2a2a]">
-                  <button
-                    onClick={() => toggleCategory(category)}
-                    className="w-full px-3 py-2 flex items-center gap-2 hover:bg-[#2a2a2a] text-sm text-gray-300 transition-colors"
+
+              {sidebarTab === 'templates' && (
+                <div className="px-3 pb-3">
+                  <Button
+                    onClick={createNewDocument}
+                    size="sm"
+                    variant="ghost"
+                    className="w-full mt-2 h-8 px-2 text-xs text-gray-400 hover:text-white hover:bg-[#2a2a2a]"
+                    title="Create new blank document (Ctrl/Cmd + N)"
                   >
-                    {expandedCategories.has(category) ? (
-                      <ChevronDown className="w-3 h-3" />
-                    ) : (
-                      <ChevronRight className="w-3 h-3" />
-                    )}
-                    <Folder className="w-3 h-3 text-yellow-500" />
-                    {category}
-                  </button>
-                  
-                  {expandedCategories.has(category) && (
-                    <div className="bg-[#1a1a1a]">
-                      {Object.entries(templates).map(([templateName]) => (
-                        <button
-                          key={templateName}
-                          onClick={() => handleTemplateSelect(category, templateName)}
-                          className={`w-full px-6 py-1 text-left text-xs hover:bg-[#2a2a2a] transition-colors flex items-center gap-2 ${
-                            selectedCategory === category && selectedTemplate === templateName
-                              ? 'bg-[#094771] text-white'
-                              : 'text-gray-400'
-                          }`}
-                        >
-                          <File className="w-3 h-3" />
-                          {templateName}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                    <FilePlus className="w-3 h-3 mr-1" />
+                    New Blank Diagram
+                  </Button>
                 </div>
-              ))}
+              )}
             </div>
+
+            {sidebarTab === 'templates' ? (
+              <div className="flex-1 overflow-y-auto">
+                {Object.entries(getCurrentTemplates()).map(([category, templates]) => (
+                  <div key={category} className="border-b border-[#2a2a2a]">
+                    <button
+                      onClick={() => toggleCategory(category)}
+                      className="w-full px-3 py-2 flex items-center gap-2 hover:bg-[#2a2a2a] text-sm text-gray-300 transition-colors"
+                    >
+                      {expandedCategories.has(category) ? (
+                        <ChevronDown className="w-3 h-3" />
+                      ) : (
+                        <ChevronRight className="w-3 h-3" />
+                      )}
+                      <Folder className="w-3 h-3 text-yellow-500" />
+                      {category}
+                    </button>
+
+                    {expandedCategories.has(category) && (
+                      <div className="bg-[#1a1a1a]">
+                        {Object.entries(templates).map(([templateName]) => (
+                          <button
+                            key={templateName}
+                            onClick={() => handleTemplateSelect(category, templateName)}
+                            className={`w-full px-6 py-1 text-left text-xs hover:bg-[#2a2a2a] transition-colors flex items-center gap-2 ${
+                              selectedCategory === category && selectedTemplate === templateName
+                                ? 'bg-[#094771] text-white'
+                                : 'text-gray-400'
+                            }`}
+                          >
+                            <File className="w-3 h-3" />
+                            {templateName}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex-1 overflow-y-auto">
+                {projects.length === 0 ? (
+                  <div className="px-4 py-6 text-xs text-gray-400 space-y-2">
+                    <p>Belum ada project.</p>
+                    <p>Gunakan tombol <span className="text-white">Project</span> di header untuk membuat project baru.</p>
+                  </div>
+                ) : (
+                  <div className="p-2">
+                    {projects.map((project) => (
+                      <ProjectTree
+                        key={project.id}
+                        project={project}
+                        expandedNodes={expandedProjectNodes}
+                        onToggleNode={(nodeId) => {
+                          setExpandedProjectNodes((prev) => {
+                            const next = new Set(prev)
+                            if (next.has(nodeId)) {
+                              next.delete(nodeId)
+                            } else {
+                              next.add(nodeId)
+                            }
+                            return next
+                          })
+                        }}
+                        selectedFolderId={selectedFolderId}
+                        selectedDiagramId={selectedDiagramId}
+                        selectedProjectId={selectedProjectId}
+                        onSelectProject={(projectId) => {
+                          setSelectedProjectId(projectId)
+                          setSelectedFolderId(null)
+                          setSelectedDiagramId(null)
+                        }}
+                        onSelectFolder={(projectId, folderId) => {
+                          setSelectedProjectId(projectId)
+                          setSelectedFolderId(folderId)
+                          setSelectedDiagramId(null)
+                          if (folderId) {
+                            setExpandedProjectNodes((prev) => {
+                              const next = new Set(prev)
+                              next.add(folderId)
+                              next.add(projectId)
+                              return next
+                            })
+                          }
+                        }}
+                        onSelectDiagram={(projectId, diagramId, folderId) => {
+                          setSelectedProjectId(projectId)
+                          setSelectedDiagramId(diagramId)
+                          setSelectedFolderId(folderId ?? null)
+                          if (folderId) {
+                            setExpandedProjectNodes((prev) => {
+                              const next = new Set(prev)
+                              next.add(folderId)
+                              next.add(projectId)
+                              return next
+                            })
+                          }
+                        }}
+                        onCreateDiagram={async (projectId, folderId) => {
+                          setSelectedProjectId(projectId)
+                          setSelectedFolderId(folderId)
+                          const templates = getCurrentTemplates()
+                          const templateContent = selectedCategory
+                            ? templates[selectedCategory]?.[selectedTemplate]
+                            : null
+
+                          if (!selectedCategory || !selectedTemplate || !templateContent) {
+                            setDirectoryError('Pilih template terlebih dahulu sebelum menambah diagram baru')
+                            return
+                          }
+
+                          await handleDiagramCreateFromTemplate(
+                            {
+                              name: selectedTemplate,
+                              engine: diagramType === 'mermaid' ? 'MERMAID' : 'PLANTUML',
+                              content: templateContent,
+                              category: selectedCategory,
+                            },
+                            folderId ?? null,
+                          )
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {sidebarTab === 'templates' && (
+              <div className="border-t border-[#2a2a2a] p-3">
+                <Button
+                  className="w-full"
+                  size="sm"
+                  onClick={() => {
+                    if (!selectedCategory || !selectedTemplate) return
+                    const templates = getCurrentTemplates()
+                    const selectedContent = templates[selectedCategory]?.[selectedTemplate]
+                    if (!selectedContent) return
+                    handleDiagramCreateFromTemplate({
+                      name: selectedTemplate,
+                      engine: diagramType === 'mermaid' ? 'MERMAID' : 'PLANTUML',
+                      content: selectedContent,
+                      category: selectedCategory,
+                    })
+                  }}
+                  disabled={!selectedProjectId || !selectedCategory || !selectedTemplate}
+                >
+                  Simpan Diagram ke {getFolderName(selectedFolderId)}
+                </Button>
+              </div>
+            )}
+
+            {sidebarTab === 'projects' && (
+              <div className="border-t border-[#2a2a2a] p-3 space-y-2">
+                <div className="flex gap-2">
+                  <Button
+                    className="flex-1"
+                    size="sm"
+                    onClick={() => setIsProjectDialogOpen(true)}
+                  >
+                    <PlusCircle className="w-4 h-4 mr-1" />
+                    Project Baru
+                  </Button>
+                  <Button
+                    className="flex-1"
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setIsFolderDialogOpen(true)}
+                    disabled={!selectedProjectId}
+                  >
+                    <Folder className="w-4 h-4 mr-1" />
+                    Folder Baru
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
