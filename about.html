@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>About - Konsensus Flow</title>
+
+    <!-- Bootstrap CDN -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Marked.js CDN for Markdown -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/lib/marked.umd.js"></script>
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="styles.css">
+
+    <style>
+        .about-sidebar {
+            background-color: var(--vscode-sidebar-bg);
+            border-right: 1px solid var(--vscode-border);
+            min-height: 100vh;
+            padding-top: 1rem;
+        }
+
+        .about-sidebar .nav-link {
+            color: var(--vscode-text);
+            padding: 0.75rem 1rem;
+            border-radius: 0;
+            margin-bottom: 0.25rem;
+        }
+
+        .about-sidebar .nav-link:hover {
+            background-color: var(--vscode-hover);
+            color: var(--vscode-text);
+        }
+
+        .about-sidebar .nav-link.active {
+            background-color: var(--vscode-active);
+            color: white;
+            border-left: 3px solid var(--vscode-active);
+        }
+
+        .about-content {
+            padding: 2rem;
+            background-color: var(--vscode-bg);
+            color: var(--vscode-text);
+            min-height: 100vh;
+        }
+
+        .about-header {
+            background: linear-gradient(135deg, var(--vscode-header-bg) 0%, var(--vscode-bg) 100%);
+            padding: 2rem 0;
+            margin-bottom: 2rem;
+        }
+
+        .back-button {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 1000;
+        }
+
+        .markdown-preview {
+            color: var(--vscode-text);
+            font-family: var(--vscode-font-family, 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif);
+            line-height: 1.6;
+        }
+
+        .markdown-preview h1,
+        .markdown-preview h2,
+        .markdown-preview h3,
+        .markdown-preview h4,
+        .markdown-preview h5,
+        .markdown-preview h6 {
+            color: var(--vscode-text);
+            margin-top: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .markdown-preview h1 {
+            border-bottom: 2px solid var(--vscode-border);
+            padding-bottom: 0.3rem;
+        }
+
+        .markdown-preview h2 {
+            border-bottom: 1px solid var(--vscode-border);
+            padding-bottom: 0.2rem;
+        }
+
+        .markdown-preview p {
+            margin-bottom: 1rem;
+        }
+
+        .markdown-preview code {
+            background-color: var(--vscode-hover);
+            color: var(--vscode-text);
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+
+        .markdown-preview pre {
+            background-color: var(--vscode-hover);
+            padding: 1rem;
+            border-radius: 5px;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+
+        .markdown-preview pre code {
+            background-color: transparent;
+            padding: 0;
+            border-radius: 0;
+        }
+
+        .markdown-preview blockquote {
+            border-left: 4px solid var(--vscode-active);
+            padding-left: 1rem;
+            margin-left: 0;
+            color: var(--vscode-text-secondary);
+        }
+
+        .markdown-preview ul,
+        .markdown-preview ol {
+            margin-bottom: 1rem;
+            padding-left: 2rem;
+        }
+
+        .markdown-preview table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 1rem 0;
+        }
+
+        .markdown-preview th,
+        .markdown-preview td {
+            border: 1px solid var(--vscode-border);
+            padding: 0.5rem;
+            text-align: left;
+        }
+
+        .markdown-preview th {
+            background-color: var(--vscode-hover);
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <a href="index.html" class="btn btn-secondary back-button">
+        <i class="fas fa-arrow-left me-2"></i>Back to Editor
+    </a>
+
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar Navigation -->
+            <nav class="col-md-3 col-lg-2 about-sidebar">
+                <div class="d-flex flex-column">
+                    <div class="p-3 border-bottom">
+                        <h5 class="mb-0">
+                            <i class="fas fa-info-circle me-2"></i>About
+                        </h5>
+                    </div>
+                    <nav class="nav nav-pills flex-column">
+                        <a class="nav-link active" id="readme-nav" href="#readme">
+                            <i class="fas fa-book me-2"></i>README
+                        </a>
+                        <a class="nav-link" id="docs-nav" href="#docs">
+                            <i class="fas fa-graduation-cap me-2"></i>Documentation
+                        </a>
+                    </nav>
+                </div>
+            </nav>
+
+            <!-- Main Content -->
+            <main class="col-md-9 col-lg-10 about-content">
+                <div class="about-header text-center">
+                    <i class="fas fa-project-diagram fa-4x mb-3" style="color: var(--vscode-active);"></i>
+                    <h1 class="display-4 fw-bold">Konsensus Flow</h1>
+                    <p class="lead">Professional Diagram IDE for Mermaid, PlantUML & Markdown</p>
+                    <div class="mt-4">
+                        <span class="badge bg-info me-2">v1.0.0</span>
+                        <span class="badge bg-success">Web-Based</span>
+                    </div>
+                </div>
+
+                <!-- README Section -->
+                <section id="readme-section" class="content-section">
+                    <div id="readme-content" class="markdown-preview">
+                        <div class="text-center">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">Loading README...</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Documentation Section -->
+                <section id="docs-section" class="content-section" style="display: none;">
+                    <div id="docs-content" class="markdown-preview">
+                        <div class="text-center">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">Loading Documentation...</p>
+                        </div>
+                    </div>
+                </section>
+
+                <footer class="text-center py-4 mt-5 border-top" style="border-color: var(--vscode-border) !important;">
+                    <div class="container">
+                        <p class="mb-2" style="color: var(--vscode-text-secondary);">
+                            Built with ❤️ using native JavaScript, Bootstrap 5, and modern web technologies
+                        </p>
+                        <div>
+                            <span class="badge bg-primary me-2">Mermaid</span>
+                            <span class="badge bg-success me-2">PlantUML</span>
+                            <span class="badge bg-info me-2">Markdown</span>
+                            <span class="badge bg-secondary">Bootstrap 5</span>
+                        </div>
+                    </div>
+                </footer>
+            </main>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        // Configure marked
+        marked.setOptions({
+            breaks: true,
+            gfm: true,
+            headerIds: false,
+            mangle: false
+        });
+
+        // Load markdown files
+        async function loadMarkdown(file, elementId) {
+            try {
+                const response = await fetch(file);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const markdown = await response.text();
+                const html = marked.parse(markdown);
+                document.getElementById(elementId).innerHTML = html;
+            } catch (error) {
+                console.error('Error loading markdown:', error);
+                document.getElementById(elementId).innerHTML = `
+                    <div class="alert alert-danger">
+                        <h5><i class="fas fa-exclamation-triangle me-2"></i>Error Loading Content</h5>
+                        <p>Failed to load ${file}. Please check the file exists and try again.</p>
+                        <p class="mb-0"><strong>Error:</strong> ${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        // Navigation handling
+        function showSection(sectionId) {
+            // Hide all sections
+            document.querySelectorAll('.content-section').forEach(section => {
+                section.style.display = 'none';
+            });
+
+            // Remove active class from nav links
+            document.querySelectorAll('.about-sidebar .nav-link').forEach(link => {
+                link.classList.remove('active');
+            });
+
+            // Show selected section
+            document.getElementById(sectionId).style.display = 'block';
+
+            // Add active class to current nav link
+            const navId = sectionId === 'readme-section' ? 'readme-nav' : 'docs-nav';
+            document.getElementById(navId).classList.add('active');
+
+            // Update URL hash
+            window.location.hash = sectionId === 'readme-section' ? '#readme' : '#docs';
+        }
+
+        // Handle navigation clicks
+        document.getElementById('readme-nav').addEventListener('click', function(e) {
+            e.preventDefault();
+            showSection('readme-section');
+        });
+
+        document.getElementById('docs-nav').addEventListener('click', function(e) {
+            e.preventDefault();
+            showSection('docs-section');
+        });
+
+        // Handle initial load and hash changes
+        function handleHashChange() {
+            const hash = window.location.hash;
+            if (hash === '#docs') {
+                showSection('docs-section');
+            } else {
+                showSection('readme-section');
+            }
+        }
+
+        // Load content when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            loadMarkdown('README.md', 'readme-content');
+            loadMarkdown('DOCUMENTATION.md', 'docs-content');
+
+            // Handle initial hash
+            handleHashChange();
+
+            // Listen for hash changes
+            window.addEventListener('hashchange', handleHashChange);
+        });
+    </script>
+</body>
+</html>

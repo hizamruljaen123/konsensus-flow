@@ -1,0 +1,15 @@
+[build]
+  publish = "."
+  command = "echo 'No build command needed'"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"
+    X-Content-Type-Options = "nosniff"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://www.plantuml.com; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: https://www.plantuml.com;"
+
+[dev]
+  command = "echo 'Serving files locally'"
+  framework = "#static"
