@@ -9,62 +9,130 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
+    <!-- Google Fonts for Professional Typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
     <!-- Marked.js CDN for Markdown -->
     <script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/lib/marked.umd.js"></script>
 
-    <!-- Custom CSS -->
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="assets/css/styles.css">
 
     <style>
-        .about-sidebar {
-            background-color: var(--vscode-sidebar-bg);
-            border-right: 1px solid var(--vscode-border);
+        /* Professional Color Scheme */
+        :root {
+            --about-primary: #2563eb;
+            --about-secondary: #64748b;
+            --about-accent: #06b6d4;
+            --about-bg: #f8fafc;
+            --about-sidebar-bg: #ffffff;
+            --about-text: #1e293b;
+            --about-text-secondary: #64748b;
+            --about-border: #e2e8f0;
+            --about-shadow: rgba(0, 0, 0, 0.1);
+        }
+
+        body {
+            background: linear-gradient(135deg, var(--about-bg) 0%, #f1f5f9 100%);
+            color: var(--about-text);
+            font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+            overflow-x: hidden;
+            overflow-y: auto;
             min-height: 100vh;
-            padding-top: 1rem;
+        }
+
+        .about-sidebar {
+            background: var(--about-sidebar-bg);
+            border-right: 2px solid var(--about-border);
+            padding-top: 2rem;
+            box-shadow: 2px 0 8px var(--about-shadow);
+            min-height: 100vh;
+            position: sticky;
+            top: 0;
+            overflow-y: auto;
         }
 
         .about-sidebar .nav-link {
-            color: var(--vscode-text);
-            padding: 0.75rem 1rem;
-            border-radius: 0;
-            margin-bottom: 0.25rem;
+            color: var(--about-text-secondary);
+            padding: 1rem 1.5rem;
+            border-radius: 8px;
+            margin: 0.25rem 1rem;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            border: none;
         }
 
         .about-sidebar .nav-link:hover {
-            background-color: var(--vscode-hover);
-            color: var(--vscode-text);
+            background-color: #f1f5f9;
+            color: var(--about-primary);
+            transform: translateX(4px);
         }
 
         .about-sidebar .nav-link.active {
-            background-color: var(--vscode-active);
+            background: linear-gradient(135deg, var(--about-primary) 0%, #1d4ed8 100%);
             color: white;
-            border-left: 3px solid var(--vscode-active);
+            border-left: 4px solid var(--about-accent);
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
         }
 
         .about-content {
-            padding: 2rem;
-            background-color: var(--vscode-bg);
-            color: var(--vscode-text);
-            min-height: 100vh;
+            padding: 3rem;
+            background: var(--about-bg);
         }
 
         .about-header {
-            background: linear-gradient(135deg, var(--vscode-header-bg) 0%, var(--vscode-bg) 100%);
-            padding: 2rem 0;
-            margin-bottom: 2rem;
+            background: linear-gradient(135deg, var(--about-sidebar-bg) 0%, var(--about-bg) 100%);
+            padding: 4rem 0;
+            margin-bottom: 3rem;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px var(--about-shadow);
+        }
+
+        .about-header .display-4 {
+            font-weight: 700;
+            color: var(--about-text);
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            margin-bottom: 1rem;
+        }
+
+        .about-header .lead {
+            color: var(--about-text-secondary);
+            font-size: 1.25rem;
+            font-weight: 400;
         }
 
         .back-button {
             position: fixed;
-            top: 20px;
-            left: 20px;
+            top: 2rem;
+            left: 2rem;
             z-index: 1000;
+            background: var(--about-sidebar-bg);
+            border: 2px solid var(--about-border);
+            border-radius: 12px;
+            color: var(--about-text-secondary);
+            font-weight: 500;
+            padding: 0.75rem 1.5rem;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 16px var(--about-shadow);
+        }
+
+        .back-button:hover {
+            background: var(--about-primary);
+            color: white;
+            border-color: var(--about-primary);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(37, 99, 235, 0.4);
         }
 
         .markdown-preview {
-            color: var(--vscode-text);
-            font-family: var(--vscode-font-family, 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif);
-            line-height: 1.6;
+            color: var(--about-text);
+            font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+            line-height: 1.8;
+            font-size: 1rem;
         }
 
         .markdown-preview h1,
@@ -73,83 +141,197 @@
         .markdown-preview h4,
         .markdown-preview h5,
         .markdown-preview h6 {
-            color: var(--vscode-text);
-            margin-top: 1.5rem;
-            margin-bottom: 0.5rem;
+            color: var(--about-text);
+            margin-top: 2rem;
+            margin-bottom: 1rem;
+            font-weight: 600;
+            line-height: 1.3;
         }
 
         .markdown-preview h1 {
-            border-bottom: 2px solid var(--vscode-border);
-            padding-bottom: 0.3rem;
+            font-size: 2.5rem;
+            border-bottom: 3px solid var(--about-primary);
+            padding-bottom: 0.5rem;
+            margin-top: 0;
         }
 
         .markdown-preview h2 {
-            border-bottom: 1px solid var(--vscode-border);
-            padding-bottom: 0.2rem;
+            font-size: 2rem;
+            border-bottom: 2px solid var(--about-accent);
+            padding-bottom: 0.3rem;
+        }
+
+        .markdown-preview h3 {
+            font-size: 1.5rem;
+            color: var(--about-primary);
         }
 
         .markdown-preview p {
-            margin-bottom: 1rem;
+            margin-bottom: 1.5rem;
+            font-size: 1.1rem;
         }
 
         .markdown-preview code {
-            background-color: var(--vscode-hover);
-            color: var(--vscode-text);
-            padding: 0.2rem 0.4rem;
-            border-radius: 3px;
-            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+            color: #1e40af;
+            padding: 0.375rem 0.75rem;
+            border-radius: 8px;
+            font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', 'Monaco', monospace;
             font-size: 0.9em;
+            font-weight: 500;
+            border: 1px solid var(--about-border);
         }
 
         .markdown-preview pre {
-            background-color: var(--vscode-hover);
-            padding: 1rem;
-            border-radius: 5px;
+            background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+            color: #e2e8f0;
+            padding: 2rem;
+            border-radius: 12px;
             overflow-x: auto;
-            margin: 1rem 0;
+            margin: 2rem 0;
+            border: 1px solid var(--about-border);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
         }
 
         .markdown-preview pre code {
-            background-color: transparent;
+            background: transparent;
+            color: inherit;
             padding: 0;
             border-radius: 0;
+            border: none;
         }
 
         .markdown-preview blockquote {
-            border-left: 4px solid var(--vscode-active);
-            padding-left: 1rem;
+            border-left: 4px solid var(--about-accent);
+            padding-left: 1.5rem;
             margin-left: 0;
-            color: var(--vscode-text-secondary);
+            color: var(--about-text-secondary);
+            font-style: italic;
+            background: linear-gradient(to right, rgba(6, 182, 212, 0.05) 0%, transparent 100%);
+            padding: 1rem 1.5rem;
+            border-radius: 0 8px 8px 0;
+            margin: 1.5rem 0;
         }
 
         .markdown-preview ul,
         .markdown-preview ol {
-            margin-bottom: 1rem;
+            margin-bottom: 1.5rem;
             padding-left: 2rem;
+        }
+
+        .markdown-preview li {
+            margin-bottom: 0.5rem;
+            font-size: 1.1rem;
         }
 
         .markdown-preview table {
             border-collapse: collapse;
             width: 100%;
-            margin: 1rem 0;
+            margin: 2rem 0;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 16px var(--about-shadow);
         }
 
         .markdown-preview th,
         .markdown-preview td {
-            border: 1px solid var(--vscode-border);
-            padding: 0.5rem;
+            border: 1px solid var(--about-border);
+            padding: 1rem;
             text-align: left;
         }
 
         .markdown-preview th {
-            background-color: var(--vscode-hover);
-            font-weight: bold;
+            background: linear-gradient(135deg, var(--about-primary) 0%, #1d4ed8 100%);
+            color: white;
+            font-weight: 600;
+            font-size: 1rem;
+        }
+
+        .markdown-preview tr:nth-child(even) {
+            background-color: rgba(248, 250, 252, 0.5);
+        }
+
+        .markdown-preview tr:hover {
+            background-color: rgba(37, 99, 235, 0.05);
+        }
+
+        footer {
+            background: var(--about-sidebar-bg);
+            border-top: 2px solid var(--about-border);
+            color: var(--about-text-secondary);
+            padding: 2rem 0;
+            margin-top: 4rem;
+        }
+
+        footer p {
+            font-size: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .badge {
+            font-weight: 500;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+        }
+
+        .badge.bg-primary {
+            background: linear-gradient(135deg, var(--about-primary) 0%, #1d4ed8 100%) !important;
+        }
+
+        .badge.bg-success {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+        }
+
+        .badge.bg-info {
+            background: linear-gradient(135deg, var(--about-accent) 0%, #0891b2 100%) !important;
+        }
+
+        .badge.bg-warning {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%) !important;
+        }
+
+        /* Loading animation */
+        .spinner-border {
+            width: 3rem;
+            height: 3rem;
+        }
+
+        /* Responsive design */
+        @media (max-width: 768px) {
+            .about-content {
+                padding: 2rem 1rem;
+            }
+
+            .about-header {
+                padding: 3rem 1rem;
+            }
+
+            .back-button {
+                top: 1rem;
+                left: 1rem;
+                padding: 0.5rem 1rem;
+                font-size: 0.9rem;
+            }
+
+            .markdown-preview h1 {
+                font-size: 2rem;
+            }
+
+            .markdown-preview h2 {
+                font-size: 1.5rem;
+            }
+        }
+
+        /* Smooth transitions */
+        * {
+            transition: color 0.3s ease, background-color 0.3s ease, border-color 0.3s ease;
         }
     </style>
 </head>
 <body>
     <a href="index.html" class="btn btn-secondary back-button">
-        <i class="fas fa-arrow-left me-2"></i>Back to Editor
+        <i class="fas fa-arrow-left me-2"></i>Back to Home
     </a>
 
     <div class="container-fluid">
@@ -176,12 +358,19 @@
             <!-- Main Content -->
             <main class="col-md-9 col-lg-10 about-content">
                 <div class="about-header text-center">
-                    <i class="fas fa-project-diagram fa-4x mb-3" style="color: var(--vscode-active);"></i>
-                    <h1 class="display-4 fw-bold">Konsensus Flow</h1>
-                    <p class="lead">Professional Diagram IDE for Mermaid, PlantUML & Markdown</p>
-                    <div class="mt-4">
-                        <span class="badge bg-info me-2">v1.0.0</span>
-                        <span class="badge bg-success">Web-Based</span>
+                    <div class="container">
+                        <div class="row justify-content-center">
+                            <div class="col-lg-8">
+                                <i class="fas fa-project-diagram fa-5x mb-4" style="color: var(--about-primary); background: linear-gradient(135deg, var(--about-primary) 0%, var(--about-accent) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;"></i>
+                                <h1 class="display-4 fw-bold">Konsensus Flow</h1>
+                                <p class="lead">Professional Diagram IDE for Mermaid, PlantUML & Markdown</p>
+                                <div class="mt-4 d-flex justify-content-center gap-3 flex-wrap">
+                                    <span class="badge bg-primary">v1.0.0</span>
+                                    <span class="badge bg-success">Web-Based</span>
+                                    <span class="badge bg-info">Open Source</span>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -209,16 +398,25 @@
                     </div>
                 </section>
 
-                <footer class="text-center py-4 mt-5 border-top" style="border-color: var(--vscode-border) !important;">
+                <footer class="text-center py-4 mt-5 border-top" style="border-color: var(--about-border) !important;">
                     <div class="container">
-                        <p class="mb-2" style="color: var(--vscode-text-secondary);">
-                            Built with ❤️ using native JavaScript, Bootstrap 5, and modern web technologies
-                        </p>
-                        <div>
-                            <span class="badge bg-primary me-2">Mermaid</span>
-                            <span class="badge bg-success me-2">PlantUML</span>
-                            <span class="badge bg-info me-2">Markdown</span>
-                            <span class="badge bg-secondary">Bootstrap 5</span>
+                        <div class="row justify-content-center">
+                            <div class="col-lg-8">
+                                <h5 class="mb-3" style="color: var(--about-text);">Built with Modern Web Technologies</h5>
+                                <p class="mb-3" style="color: var(--about-text-secondary);">
+                                    Created with ❤️ using native JavaScript, Bootstrap 5, and cutting-edge web technologies for the best user experience.
+                                </p>
+                                <div class="d-flex justify-content-center gap-2 flex-wrap mb-3">
+                                    <span class="badge bg-primary">Mermaid</span>
+                                    <span class="badge bg-success">PlantUML</span>
+                                    <span class="badge bg-info">Markdown</span>
+                                    <span class="badge bg-secondary">Bootstrap 5</span>
+                                    <span class="badge bg-warning text-dark">Ace Editor</span>
+                                </div>
+                                <p class="mb-0" style="color: var(--about-text-secondary); font-size: 0.9rem;">
+                                    © 2024 Konsensus Flow. Professional diagram creation made simple.
+                                </p>
+                            </div>
                         </div>
                     </div>
                 </footer>

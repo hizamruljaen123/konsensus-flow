@@ -229,13 +229,6 @@ export class DiagramController {
      * @private
      */
     setupMenuHandlers() {
-        // Settings menu
-        const settingsMenu = document.getElementById('settings-menu');
-        if (settingsMenu) {
-            settingsMenu.addEventListener('click', () => {
-                this.handleShowSettings();
-            });
-        }
 
         // Rename from Edit menu
         const renameMenu = document.getElementById('rename');
