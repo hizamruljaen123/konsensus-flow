@@ -178,7 +178,13 @@ export class FileSystem {
         // Add to parent folder's children
         const parentId = this.findItemByPath(parentPath);
         if (parentId && project.files[parentId]) {
-            project.files[parentId].children.push(itemId);
+            const parentItem = project.files[parentId];
+            if (parentItem.type === 'folder') {
+                if (!Array.isArray(parentItem.children)) {
+                    parentItem.children = [];
+                }
+                parentItem.children.push(itemId);
+            }
         }
 
         this.saveProjects();

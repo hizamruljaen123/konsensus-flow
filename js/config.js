@@ -2,10 +2,10 @@
 // Store API keys and configuration here
 
 const CONFIG = {
-    OPENROUTER_API_KEY: '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',
-    OPENROUTER_BASE_URL: 'https://openrouter.ai/api/v1/chat/completions',
-    MODEL: 'z-ai/glm-4.5-air:free',
-    SITE_URL: 'https://konsensus-flow.vercel.app', // Update with your actual site URL
+    GEMINI_API_KEY: 'AIzaSyCAQfdGh9up6LLdsyDEcsY9GtA6PVBYNJ4',
+    GEMINI_MODEL: 'gemini-2.0-flash',
+    GEMINI_BASE_URL: 'https://generativelanguage.googleapis.com/v1beta',
+    SITE_URL: 'http://127.0.0.1:5500/editor.html', // Update with your actual site URL
     SITE_NAME: 'Konsensus Flow - Professional Diagram IDE'
 };
 

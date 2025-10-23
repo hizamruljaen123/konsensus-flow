@@ -158,7 +158,7 @@ export class RenderingEngine {
             fontFamily: '"Segoe UI", Tahoma, Geneva, Verdana, sans-serif',
             fontSize: 14,
             flowchart: {
-                useMaxWidth: true,
+                useMaxWidth: false,
                 htmlLabels: true,
                 curve: 'basis'
             }

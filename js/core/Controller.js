@@ -191,7 +191,7 @@ export class DiagramController {
         const contextActions = {
             'context-new-file': (targetId) => this.handleNewFileFromContext(targetId),
             'context-new-folder': (targetId) => this.handleNewFolderFromContext(targetId),
-            'context-delete': () => this.handleDeleteItem(),
+            'context-delete': (targetId) => this.handleDeleteItem(targetId),
             'context-download': () => this.handleDownloadFile()
         };
 
@@ -584,14 +584,17 @@ Learn more about Markdown: [Markdown Guide](https://www.markdownguide.org/)`
      * Handles item deletion
      * @private
      */
-    handleDeleteItem() {
-        if (this.view.contextMenuTarget) {
-            const item = this.model.fileSystem.getItem(this.view.contextMenuTarget);
-            if (item && confirm(`Are you sure you want to delete "${item.name}"?`)) {
-                this.model.deleteItem(this.view.contextMenuTarget);
-                this.view.update(this.model);
-                this.view.showNotification('Item deleted!', 'success');
-            }
+    handleDeleteItem(itemId = null) {
+        const targetId = itemId || this.view.contextMenuTarget;
+        if (!targetId) {
+            return;
+        }
+
+        const item = this.model.fileSystem.getItem(targetId);
+        if (item && confirm(`Are you sure you want to delete "${item.name}"?`)) {
+            this.model.deleteItem(targetId);
+            this.view.update(this.model);
+            this.view.showNotification('Item deleted!', 'success');
         }
     }
 

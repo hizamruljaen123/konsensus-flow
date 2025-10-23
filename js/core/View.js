@@ -552,15 +552,14 @@ export class DiagramView {
         window.mermaid.render('mermaid-diagram', codeToRender).then(({ svg }) => {
             this.elements.diagramPreview.innerHTML = svg;
             const svgElement = this.elements.diagramPreview.querySelector('svg');
-            if (svgElement && window.svgPanZoom) {
-                svgPanZoom(svgElement, {
-                    zoomEnabled: true,
-                    controlIconsEnabled: true,
-                    fit: true,
-                    center: true,
-                    minZoom: 0.5,
-                    maxZoom: 10
-                });
+            if (svgElement) {
+                // Remove fixed width/height attributes to allow natural sizing
+                svgElement.removeAttribute('width');
+                svgElement.removeAttribute('height');
+                svgElement.style.maxWidth = 'none';
+                svgElement.style.width = 'auto';
+                svgElement.style.height = 'auto';
+                svgElement.style.display = 'block';
             }
         }).catch(error => {
             throw new Error(`Mermaid rendering failed: ${error.message}`);
@@ -628,20 +627,14 @@ export class DiagramView {
             this.elements.diagramPreview.innerHTML = svgText;
             const svgElement = this.elements.diagramPreview.querySelector('svg');
 
-            if (svgElement && window.svgPanZoom) {
-                svgElement.style.width = '100%';
-                svgElement.style.height = '100%';
+            if (svgElement) {
+                // Remove fixed width/height attributes to allow natural sizing
                 svgElement.removeAttribute('width');
                 svgElement.removeAttribute('height');
-
-                svgPanZoom(svgElement, {
-                    zoomEnabled: true,
-                    controlIconsEnabled: true,
-                    fit: true,
-                    center: true,
-                    minZoom: 0.5,
-                    maxZoom: 10
-                });
+                svgElement.style.maxWidth = 'none';
+                svgElement.style.width = 'auto';
+                svgElement.style.height = 'auto';
+                svgElement.style.display = 'block';
             }
         } catch (error) {
             console.error('PlantUML rendering failed:', error);
@@ -708,16 +701,44 @@ export class DiagramView {
      * @private
      */
     renderError(error) {
+        // Clear any previous content first
+        this.elements.diagramPreview.innerHTML = '';
+
         const errorDiv = document.createElement('div');
-        errorDiv.className = 'd-flex align-items-center justify-content-center h-100';
+        errorDiv.className = 'd-flex align-items-center justify-content-center h-100 text-center';
+        errorDiv.style.padding = '2rem';
+
+        let errorIcon = 'fas fa-exclamation-triangle';
+        let errorTitle = 'Error rendering diagram';
+        let errorClass = 'text-danger';
+
+        // Special handling for PlantUML errors
+        if (error.message.includes('PlantUML')) {
+            errorIcon = 'fas fa-code-branch';
+            errorTitle = 'PlantUML Rendering Error';
+            errorClass = 'text-warning';
+        }
+
         errorDiv.innerHTML = `
-            <div class="text-center text-danger">
-                <i class="fas fa-exclamation-triangle fa-3x mb-3"></i>
-                <p>Error rendering diagram: ${error.message}</p>
+            <div class="${errorClass}" style="max-width: 600px;">
+                <i class="${errorIcon} fa-4x mb-4"></i>
+                <h4 class="mb-3">${errorTitle}</h4>
+                <div class="alert alert-${errorClass === 'text-warning' ? 'warning' : 'danger'} p-3">
+                    <strong>Error Details:</strong><br>
+                    ${error.message}
+                </div>
+                <small class="text-muted mt-3 d-block">
+                    Check your diagram syntax and try again.
+                </small>
             </div>
         `;
 
         this.elements.diagramPreview.appendChild(errorDiv);
+
+        // Also show notification for PlantUML errors
+        if (error.message.includes('PlantUML')) {
+            this.showNotification(`PlantUML Error: ${error.message}`, 'warning');
+        }
     }
 
     /**
@@ -828,7 +849,7 @@ export class DiagramView {
         // Add folder options
         const project = window.diagramApp ? window.diagramApp.model.getCurrentProject() : null;
         if (project) {
-            this.addFolderOptions(project.files, 'root', '', selectedPath);
+            this.addFolderOptions(project.files, 'root', selectedPath);
         }
     }
 
@@ -836,27 +857,28 @@ export class DiagramView {
      * Recursively adds folder options
      * @param {Object} files - Files collection
      * @param {string} itemId - Current item ID
-     * @param {string} prefix - Path prefix
      * @param {string} selectedPath - Selected path
      * @private
      */
-    addFolderOptions(files, itemId, prefix, selectedPath) {
+    addFolderOptions(files, itemId, selectedPath) {
         const item = files[itemId];
         if (!item || item.type !== 'folder') return;
-        
-        const fullPath = prefix ? `${prefix}/${item.name}` : `/${item.name}`;
-        const option = document.createElement('option');
-        option.value = fullPath;
-        option.textContent = fullPath;
-        if (fullPath === selectedPath) {
-            option.selected = true;
+
+        const isRoot = itemId === 'root' || item.path === '/';
+        if (!isRoot) {
+            const option = document.createElement('option');
+            option.value = item.path;
+            option.textContent = item.path;
+            if (item.path === selectedPath) {
+                option.selected = true;
+            }
+            this.elements.fileLocation.appendChild(option);
         }
-        this.elements.fileLocation.appendChild(option);
-        
+
         // Add subfolders
-        if (item.children) {
+        if (Array.isArray(item.children)) {
             item.children.forEach(childId => {
-                this.addFolderOptions(files, childId, fullPath, selectedPath);
+                this.addFolderOptions(files, childId, selectedPath);
             });
         }
     }
@@ -1076,12 +1098,20 @@ export class DiagramView {
             const svgElement = this.elements.fullscreenPreview.querySelector('svg');
             if (svgElement && window.svgPanZoom) {
                 console.log('Applying svgPanZoom to fullscreen SVG');
+                // Remove fixed dimensions to show full diagram
+                svgElement.removeAttribute('width');
+                svgElement.removeAttribute('height');
+                svgElement.style.maxWidth = 'none';
+                svgElement.style.width = 'auto';
+                svgElement.style.height = 'auto';
+                
                 // Enhanced pan and zoom for fullscreen
                 svgPanZoom(svgElement, {
                     zoomEnabled: true,
                     controlIconsEnabled: true,
-                    fit: true,
-                    center: true,
+                    fit: false,
+                    contain: false,
+                    center: false,
                     minZoom: 0.1,
                     maxZoom: 20,
                     zoomScaleSensitivity: 0.2,
@@ -1129,17 +1159,20 @@ export class DiagramView {
             const svgElement = this.elements.fullscreenPreview.querySelector('svg');
 
             if (svgElement && window.svgPanZoom) {
-                svgElement.style.width = '100%';
-                svgElement.style.height = '100%';
+                // Remove fixed dimensions to show full diagram
                 svgElement.removeAttribute('width');
                 svgElement.removeAttribute('height');
+                svgElement.style.maxWidth = 'none';
+                svgElement.style.width = 'auto';
+                svgElement.style.height = 'auto';
 
                 // Enhanced pan and zoom for fullscreen
                 svgPanZoom(svgElement, {
                     zoomEnabled: true,
                     controlIconsEnabled: true,
-                    fit: true,
-                    center: true,
+                    fit: false,
+                    contain: false,
+                    center: false,
                     minZoom: 0.1,
                     maxZoom: 20,
                     zoomScaleSensitivity: 0.2,
