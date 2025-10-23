@@ -542,7 +542,6 @@ export class DiagramView {
         }
 
         const codeToRender = String(code || '');
-        console.log('Rendering Mermaid with code:', codeToRender); // Debugging line
 
         window.mermaid.initialize({
             startOnLoad: false,
@@ -578,15 +577,53 @@ export class DiagramView {
             throw new Error('PlantUML encoder not loaded');
         }
 
+        // Validate PlantUML code
+        const trimmedCode = (code || '').trim();
+        if (!trimmedCode) {
+            throw new Error('PlantUML code is empty');
+        }
+
+        // Check if code starts with @startuml
+        if (!trimmedCode.startsWith('@startuml')) {
+            throw new Error('Invalid PlantUML code: must start with @startuml');
+        }
+
         try {
-            const encoded = window.plantumlEncoder.encode(code);
-            const imageUrl = `https://www.plantuml.com/plantuml/svg/${encoded}`;
-            
-            const response = await fetch(imageUrl);
-            if (!response.ok) {
-                throw new Error(`Failed to fetch PlantUML diagram: ${response.statusText}`);
+            console.log('Encoding PlantUML code, length:', trimmedCode.length);
+            const encoded = window.plantumlEncoder.encode(trimmedCode);
+
+            if (!encoded) {
+                throw new Error('Failed to encode PlantUML code');
             }
+
+            const imageUrl = `https://www.plantuml.com/plantuml/svg/${encoded}`;
+            console.log('PlantUML URL length:', imageUrl.length);
+
+            // Check URL length limit (PlantUML has limits)
+            if (imageUrl.length > 2000) {
+                throw new Error('PlantUML code too complex. URL length exceeds limit.');
+            }
+
+            // Create AbortController for timeout
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
+            const response = await fetch(imageUrl, {
+                signal: controller.signal
+            });
+
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+                console.error('PlantUML server response:', response.status, response.statusText);
+                throw new Error(`PlantUML server error: ${response.status} ${response.statusText}`);
+            }
+
             const svgText = await response.text();
+
+            if (!svgText || svgText.length < 100) {
+                throw new Error('Invalid PlantUML response: SVG too small');
+            }
 
             this.elements.diagramPreview.innerHTML = svgText;
             const svgElement = this.elements.diagramPreview.querySelector('svg');
@@ -608,7 +645,16 @@ export class DiagramView {
             }
         } catch (error) {
             console.error('PlantUML rendering failed:', error);
-            this.renderError(new Error(`PlantUML rendering failed: ${error.message}`));
+
+            // Provide more specific error messages
+            let errorMessage = error.message;
+            if (error.name === 'AbortError') {
+                errorMessage = 'Request timeout - diagram may be too complex';
+            } else if (error.message.includes('400')) {
+                errorMessage = 'PlantUML syntax error or diagram too complex';
+            }
+
+            this.renderError(new Error(`PlantUML rendering failed: ${errorMessage}`));
         }
     }
 
@@ -1157,9 +1203,12 @@ export class DiagramView {
             this.editor.setShowPrintMargin(false);
             this.editor.setOptions({
                 fontSize: '14px',
-                enableBasicAutocompletion: true,
-                enableLiveAutocompletion: true,
-                enableSnippets: true
+                showLineNumbers: true,
+                tabSize: 2,
+                useSoftTabs: true,
+                wrap: true,
+                highlightActiveLine: true,
+                showPrintMargin: false
             });
 
             // Set up auto-render with debouncing
