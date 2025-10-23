@@ -23,6 +23,10 @@
     <!-- Marked.js CDN for Markdown -->
     <script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/lib/marked.umd.js"></script>
 
+    <!-- Highlight.js CDN for syntax highlighting -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/vs2015.min.css">
+
     <!-- svg-pan-zoom CDN -->
     <script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
     
@@ -123,17 +127,49 @@
                 <!-- Unified Editor/Preview View -->
                 <div id="editor-view" class="view active">
                     <div class="editor-container">
-                        <!-- Code Editor Panel -->
-                        <div class="code-panel">
-                            <div class="panel-header">
-                                <div class="panel-title">
-                                    <i class="fas fa-code me-2"></i>
-                                    <span id="file-name-display">Untitled</span>
-                                    <span id="file-type-badge" class="badge bg-secondary ms-2"></span>
+                        <div class="editor-column">
+                            <!-- Code Editor Panel -->
+                            <div class="code-panel">
+                                <div class="panel-header">
+                                    <div class="panel-title">
+                                        <i class="fas fa-code me-2"></i>
+                                        <span id="file-name-display">Untitled</span>
+                                        <span id="file-type-badge" class="badge bg-secondary ms-2"></span>
+                                    </div>
+                                </div>
+                                <div class="panel-content">
+                                    <div id="file-editor" class="code-editor"></div>
                                 </div>
                             </div>
-                            <div class="panel-content">
-                                <div id="file-editor" class="code-editor"></div>
+
+                            <!-- Chatbot Panel -->
+                            <div id="chatbot-panel" class="chatbot-panel">
+                                <div class="panel-header">
+                                    <h5 class="panel-title" id="chatbotModalLabel">
+                                        <i class="fas fa-robot me-2"></i>AI Chatbot
+                                    </h5>
+                                    <div class="d-flex align-items-center">
+                                        <button id="toggle-chatbot-panel" class="btn btn-sm btn-outline-secondary me-2" title="Collapse Panel">
+                                            <i class="fas fa-chevron-down"></i>
+                                        </button>
+                                        <button id="expand-chatbot-fullscreen" class="btn btn-sm btn-outline-secondary" title="Fullscreen">
+                                            <i class="fas fa-expand"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="panel-content">
+                                    <div id="chatbot-messages" class="chatbot-messages">
+                                        <div class="chatbot-message bot">
+                                            Hello! I'm your AI assistant. How can I help you today?
+                                        </div>
+                                    </div>
+                                    <div class="chatbot-input-group">
+                                        <input type="text" id="chatbot-input" class="chatbot-input" placeholder="Type your message..." />
+                                        <button id="chatbot-send" class="chatbot-send-btn">
+                                            <i class="fas fa-paper-plane"></i>
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -385,6 +421,34 @@ rectangle System {
                 </div>
                 <div class="modal-body fullscreen-modal-body">
                     <div id="fullscreen-preview" class="fullscreen-preview"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Chatbot Fullscreen Modal -->
+    <div class="modal fade chatbot-fullscreen-modal" id="chatbotFullscreenModal" tabindex="-1" aria-labelledby="chatbotFullscreenModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-fullscreen">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="chatbotFullscreenModalLabel">
+                        <i class="fas fa-robot me-2"></i>AI Chatbot - Fullscreen
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="chatbot-fullscreen-messages" class="chatbot-messages">
+                        <div class="chatbot-message bot">
+                            Hello! I'm your AI assistant. How can I help you today?
+                        </div>
+                    </div>
+                    <div class="chatbot-input-group">
+                        <input type="text" id="chatbot-fullscreen-input" class="chatbot-input" placeholder="Type your message..." />
+                        <button id="chatbot-fullscreen-send" class="chatbot-send-btn">
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

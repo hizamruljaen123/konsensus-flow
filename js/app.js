@@ -21,6 +21,9 @@ import { DiagramController } from './core/Controller.js';
 // Import rendering engine
 import { RenderingEngine } from './rendering/RenderingEngine.js';
 
+// Import chatbot
+import Chatbot from './chatbot.js';
+
 /**
  * Application configuration
  * @constant {Object}
@@ -77,6 +80,13 @@ class DiagramIDE {
          */
         this.renderingEngine = null;
 
+        /**
+         * Chatbot instance
+         * @type {Chatbot}
+         * @private
+         */
+        this.chatbot = null;
+
         // Initialize application
         this.initialize();
     }
@@ -94,6 +104,9 @@ class DiagramIDE {
             this.model = new DiagramModel();
             this.view = new DiagramView();
             this.controller = new DiagramController(this.model, this.view);
+
+            // Initialize chatbot
+            this.chatbot = new Chatbot();
 
             // Store global reference for debugging
             window.diagramApp = this;

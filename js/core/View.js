@@ -541,13 +541,16 @@ export class DiagramView {
             throw new Error('Mermaid library not loaded');
         }
 
+        const codeToRender = String(code || '');
+        console.log('Rendering Mermaid with code:', codeToRender); // Debugging line
+
         window.mermaid.initialize({
             startOnLoad: false,
             theme: document.documentElement.getAttribute('data-theme') === 'light' ? 'default' : 'dark',
             securityLevel: 'loose'
         });
 
-        window.mermaid.render('mermaid-diagram', code).then(({ svg }) => {
+        window.mermaid.render('mermaid-diagram', codeToRender).then(({ svg }) => {
             this.elements.diagramPreview.innerHTML = svg;
             const svgElement = this.elements.diagramPreview.querySelector('svg');
             if (svgElement && window.svgPanZoom) {
