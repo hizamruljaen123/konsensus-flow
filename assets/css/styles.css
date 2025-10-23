@@ -457,6 +457,59 @@ body {
   white-space: nowrap;
 }
 
+.project-tree .tree-item .item-content {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  gap: 0.5rem;
+}
+
+.project-tree .tree-item .item-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.project-tree .file-type-badge {
+  display: inline-block;
+  padding: 0.1rem 0.4rem;
+  margin-bottom: 0.1rem;
+  border-radius: 12px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-tree .file-type-badge.badge-mermaid {
+  background-color: rgba(56, 189, 248, 0.2);
+  color: #38bdf8;
+}
+
+.project-tree .file-type-badge.badge-plantuml {
+  background-color: rgba(34, 197, 94, 0.2);
+  color: #22c55e;
+}
+
+.project-tree .file-type-badge.badge-markdown {
+  background-color: rgba(168, 85, 247, 0.2);
+  color: #a855f7;
+}
+
+.project-tree .file-type-badge.badge-text {
+  background-color: rgba(107, 114, 128, 0.2);
+  color: #9ca3af;
+}
+
+.project-tree .file-type-badge.badge-generic {
+  background-color: rgba(99, 102, 241, 0.2);
+  color: #6366f1;
+}
+
 .project-tree .tree-item .actions {
   opacity: 0;
   transition: opacity 0.2s ease;

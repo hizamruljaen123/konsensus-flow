@@ -15,6 +15,7 @@
 
 import { DiagramModel } from './Model.js';
 import { DiagramView } from './View.js';
+import { detectDiagramType } from '../utils/DiagramUtils.js';
 
 /**
  * DiagramController class - Manages user interactions and business logic
@@ -604,16 +605,17 @@ Learn more about Markdown: [Markdown Guide](https://www.markdownguide.org/)`
      * @public
      */
     async handleDownloadSVG(fileId) {
-        const file = this.model.fileSystem.getItem(fileId);
-        if (!file || file.type !== 'file') {
-            this.view.showNotification('Invalid file for SVG download', 'error');
+        const content = this.view.getCurrentDiagramContent();
+        if (!content) {
+            this.view.showNotification('No diagram available for SVG export', 'warning');
             return;
         }
 
         try {
-            const result = await this.renderDiagramForDownload(file.content, 'svg');
+            const result = await this.renderDiagramForDownload(content, 'svg');
             if (result && result.content) {
-                this.downloadBlob(result.content, `${file.name.replace(/\.[^/.]+$/, '')}.svg`, 'image/svg+xml');
+                const filename = this.sanitizeDownloadFilename(fileId, 'svg');
+                this.downloadBlob(result.content, filename, 'image/svg+xml');
                 this.view.showNotification('SVG downloaded successfully!', 'success');
             } else {
                 this.view.showNotification('Failed to generate SVG', 'error');
@@ -630,36 +632,49 @@ Learn more about Markdown: [Markdown Guide](https://www.markdownguide.org/)`
      * @public
      */
     async handleDownloadPNG(fileId) {
-        const file = this.model.fileSystem.getItem(fileId);
-        if (!file || file.type !== 'file') {
-            this.view.showNotification('Invalid file for PNG download', 'error');
+        const content = this.view.getCurrentDiagramContent();
+        if (!content) {
+            this.view.showNotification('No diagram available for PNG export', 'warning');
             return;
         }
 
         try {
-            // Try dedicated PNG rendering first
-            let pngBlob = await this.renderDiagramAsPNG(file.content);
+            let pngBlob = await this.renderDiagramAsPNG(content);
 
-            // If dedicated rendering fails, fallback to SVG-to-PNG conversion
             if (!pngBlob) {
-                console.log('Dedicated PNG rendering failed, trying SVG fallback...');
-                const svgResult = await this.renderDiagramForDownload(file.content, 'svg');
+                const svgResult = await this.renderDiagramForDownload(content, 'svg');
                 if (svgResult && svgResult.content) {
                     pngBlob = await this.convertSvgToPng(svgResult.content);
                 }
             }
 
             if (pngBlob) {
-                this.downloadBlob(pngBlob, `${file.name.replace(/\.[^/.]+$/, '')}.png`, 'image/png');
+                const filename = this.sanitizeDownloadFilename(fileId, 'png');
+                this.downloadBlob(pngBlob, filename, 'image/png');
                 this.view.showNotification('PNG downloaded successfully!', 'success');
             } else {
                 this.view.showNotification('Failed to generate PNG', 'error');
             }
         } catch (error) {
             console.error('PNG download failed:', error);
-            console.error('Error details:', error.message, error.stack);
             this.view.showNotification('Failed to download PNG', 'error');
         }
+    }
+
+    /**
+     * Generates a sanitized filename for downloads based on current file or timestamp
+     * @param {string} fileId - Original file ID
+     * @param {string} extension - Desired extension (svg/png)
+     * @returns {string} Download filename
+     * @private
+     */
+    sanitizeDownloadFilename(fileId, extension) {
+        const file = this.model.fileSystem.getItem(fileId);
+        const baseName = file && file.name
+            ? file.name.replace(/\.[^/.]+$/, '')
+            : `diagram-${Date.now()}`;
+
+        return `${baseName}.${extension}`;
     }
 
     /**
@@ -669,7 +684,7 @@ Learn more about Markdown: [Markdown Guide](https://www.markdownguide.org/)`
      * @private
      */
     async renderDiagramAsPNG(content) {
-        const type = this.detectDiagramType(content);
+        const type = detectDiagramType(content);
 
         try {
             if (type === 'mermaid') {
@@ -828,7 +843,7 @@ Learn more about Markdown: [Markdown Guide](https://www.markdownguide.org/)`
      * @private
      */
     async renderDiagramForDownload(content, format) {
-        const type = this.detectDiagramType(content);
+        const type = detectDiagramType(content);
 
         if (type === 'mermaid') {
             return await this.renderMermaidForDownload(content);
@@ -977,29 +992,6 @@ Learn more about Markdown: [Markdown Guide](https://www.markdownguide.org/)`
      * Detects diagram type from content
      * @param {string} content - Content to analyze
      * @returns {string} Diagram type
-     * @private
-     */
-    detectDiagramType(content) {
-        if (!content) return 'unknown';
-
-        const trimmed = content.trim();
-
-        if (trimmed.includes('graph ') || trimmed.includes('flowchart ') ||
-            /^\s*graph\s+/.test(trimmed)) {
-            return 'mermaid';
-        }
-
-        if (trimmed.startsWith('@startuml') || trimmed.includes('skinparam')) {
-            return 'plantuml';
-        }
-
-        return 'unknown';
-    }
-
-    /**
-     * Gets item path by ID
-     * @param {string} itemId - Item ID
-     * @returns {string|null} Item path
      * @private
      */
     getItemPath(itemId) {

@@ -13,6 +13,8 @@
 
 'use strict';
 
+import { detectDiagramType } from '../utils/DiagramUtils.js';
+
 /**
  * RenderingEngine class - Handles diagram rendering operations
  * @class
@@ -53,7 +55,7 @@ export class RenderingEngine {
             return this.renderCache.get(cacheKey);
         }
 
-        const type = this.detectDiagramType(content);
+        const type = await this.detectDiagramType(content);
         let result;
 
         try {
@@ -76,64 +78,6 @@ export class RenderingEngine {
             console.error('Diagram rendering failed:', error);
             throw new Error(`Rendering failed: ${error.message}`);
         }
-    }
-
-    /**
-     * Detects diagram type from content
-     * @param {string} content - Content to analyze
-     * @returns {string} Detected diagram type
-     * @private
-     */
-    detectDiagramType(content) {
-        if (!content || typeof content !== 'string') {
-            return 'unknown';
-        }
-
-        const trimmed = content.trim();
-
-        // Mermaid syntax patterns
-        const mermaidPatterns = [
-            /^\s*graph\s+/,
-            /^\s*flowchart\s+/,
-            /^\s*sequenceDiagram/,
-            /^\s*classDiagram/,
-            /^\s*stateDiagram/,
-            /^\s*erDiagram/,
-            /^\s*journey/,
-            /^\s*gantt/,
-            /^\s*pie\s+/,
-            /^\s*sankey\s+/,
-            /^\s*timeline\s+/,
-            /^\s*mindmap\s+/,
-            /^\s*block-beta\s+/
-        ];
-
-        if (mermaidPatterns.some(pattern => pattern.test(trimmed))) {
-            return 'mermaid';
-        }
-
-        // PlantUML syntax patterns
-        const plantumlPatterns = [
-            /^\s*@startuml/,
-            /^\s*@startmindmap/,
-            /^\s*@startwbs/,
-            /^\s*@startgantt/
-        ];
-
-        if (plantumlPatterns.some(pattern => pattern.test(trimmed))) {
-            return 'plantuml';
-        }
-
-        // Additional PlantUML indicators
-        if (trimmed.includes('skinparam') ||
-            trimmed.includes('participant ') ||
-            trimmed.includes('actor ') ||
-            trimmed.includes('class ') ||
-            (trimmed.includes('->') && trimmed.includes(':'))) {
-            return 'plantuml';
-        }
-
-        return 'unknown';
     }
 
     /**
@@ -283,7 +227,7 @@ export class RenderingEngine {
      * @public
      */
     validateContent(content) {
-        const type = this.detectDiagramType(content);
+        const type = detectDiagramType(content);
         const result = {
             type: type,
             valid: false,

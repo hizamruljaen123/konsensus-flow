@@ -13,6 +13,8 @@
 
 'use strict';
 
+import { detectDiagramType } from '../utils/DiagramUtils.js';
+
 /**
  * DiagramView class - Manages UI rendering and user interactions
  * @class
@@ -151,7 +153,6 @@ export class DiagramView {
         // Fullscreen button
         if (this.elements.fullscreenBtn) {
             this.elements.fullscreenBtn.addEventListener('click', () => {
-                console.log('Fullscreen button clicked');
                 this.showFullscreenModal();
             });
         }
@@ -293,11 +294,16 @@ export class DiagramView {
         const isFolder = item.type === 'folder';
         const isExpanded = item.expanded !== false;
 
+        const typeBadge = isFolder ? '' : this.getFileTypeBadge(item);
+
         let html = `
             <div class="tree-item ${isSelected ? 'selected' : ''} ${isFolder ? 'folder' : 'file'} ${!isExpanded ? 'collapsed' : ''}" data-id="${itemId}">
                 ${isFolder ? `<span class="toggle">${isExpanded ? '▼' : '▶'}</span>` : ''}
-                <i class="fas fa-${isFolder ? 'folder' : 'file'}"></i>
-                <span class="name" ondblclick="window.diagramApp.view.startInlineEdit('${itemId}')">${this.escapeHtml(item.name)}</span>
+                <div class="item-content">
+                    <i class="fas fa-${isFolder ? 'folder' : 'file'}"></i>
+                    <span class="name" ondblclick="window.diagramApp.view.startInlineEdit('${itemId}')">${this.escapeHtml(item.name)}</span>
+                    ${typeBadge}
+                </div>
                 <div class="dropdown">
                     <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
                         <i class="fas fa-ellipsis-h"></i>
@@ -328,6 +334,53 @@ export class DiagramView {
         }
 
         return html;
+    }
+
+    /**
+     * Generates file type badge HTML for a project tree item
+     * @param {Object} item - File item
+     * @returns {string} Badge HTML string
+     * @private
+     */
+    getFileTypeBadge(item) {
+        const typeInfo = this.resolveFileTypeInfo(item);
+        if (!typeInfo) {
+            return '';
+        }
+
+        return `<span class="file-type-badge ${typeInfo.className}">${typeInfo.label}</span>`;
+    }
+
+    /**
+     * Determines file type label/class from content or extension
+     * @param {Object} item - File item
+     * @returns {{label:string,className:string}|null}
+     * @private
+     */
+    resolveFileTypeInfo(item) {
+        if (!item || item.type !== 'file') {
+            return null;
+        }
+
+        const contentType = detectDiagramType(item.content || '');
+        if (contentType === 'mermaid') {
+            return { label: 'Mermaid', className: 'badge-mermaid' };
+        }
+
+        if (contentType === 'plantuml') {
+            return { label: 'PlantUML', className: 'badge-plantuml' };
+        }
+
+        const lowerName = (item.name || '').toLowerCase();
+        if (lowerName.endsWith('.md') || lowerName.endsWith('.markdown')) {
+            return { label: 'Markdown', className: 'badge-markdown' };
+        }
+
+        if (lowerName.endsWith('.txt')) {
+            return { label: 'Text', className: 'badge-text' };
+        }
+
+        return { label: 'File', className: 'badge-generic' };
     }
 
     /**
@@ -412,28 +465,7 @@ export class DiagramView {
             return 'unknown';
         }
 
-        const trimmed = content.trim();
-
-        // Mermaid syntax detection
-        if (trimmed.includes('graph ') ||
-            trimmed.includes('flowchart ') ||
-            trimmed.includes('sequenceDiagram') ||
-            trimmed.includes('classDiagram') ||
-            trimmed.includes('stateDiagram') ||
-            /^\s*graph\s+/.test(trimmed)) {
-            return 'mermaid';
-        }
-
-        // PlantUML syntax detection
-        if (trimmed.startsWith('@startuml') ||
-            trimmed.startsWith('@startmindmap') ||
-            trimmed.startsWith('@startwbs') ||
-            trimmed.includes('skinparam') ||
-            (trimmed.includes('->') && trimmed.includes(':'))) {
-            return 'plantuml';
-        }
-
-        return 'unknown';
+        return detectDiagramType(content);
     }
 
     /**
@@ -507,7 +539,7 @@ export class DiagramView {
 
         let renderType;
         if (this.previewMode === 'auto') {
-            renderType = this.detectFileType(code);
+            renderType = detectDiagramType(code);
         } else {
             renderType = this.previewMode;
         }
@@ -552,15 +584,7 @@ export class DiagramView {
         window.mermaid.render('mermaid-diagram', codeToRender).then(({ svg }) => {
             this.elements.diagramPreview.innerHTML = svg;
             const svgElement = this.elements.diagramPreview.querySelector('svg');
-            if (svgElement) {
-                // Remove fixed width/height attributes to allow natural sizing
-                svgElement.removeAttribute('width');
-                svgElement.removeAttribute('height');
-                svgElement.style.maxWidth = 'none';
-                svgElement.style.width = 'auto';
-                svgElement.style.height = 'auto';
-                svgElement.style.display = 'block';
-            }
+            this.applySvgPanZoom(svgElement);
         }).catch(error => {
             throw new Error(`Mermaid rendering failed: ${error.message}`);
         });
@@ -626,29 +650,65 @@ export class DiagramView {
 
             this.elements.diagramPreview.innerHTML = svgText;
             const svgElement = this.elements.diagramPreview.querySelector('svg');
-
-            if (svgElement) {
-                // Remove fixed width/height attributes to allow natural sizing
-                svgElement.removeAttribute('width');
-                svgElement.removeAttribute('height');
-                svgElement.style.maxWidth = 'none';
-                svgElement.style.width = 'auto';
-                svgElement.style.height = 'auto';
-                svgElement.style.display = 'block';
-            }
+            this.applySvgPanZoom(svgElement);
         } catch (error) {
             console.error('PlantUML rendering failed:', error);
 
             // Provide more specific error messages
             let errorMessage = error.message;
-            if (error.name === 'AbortError') {
-                errorMessage = 'Request timeout - diagram may be too complex';
-            } else if (error.message.includes('400')) {
-                errorMessage = 'PlantUML syntax error or diagram too complex';
+            if (error.message.includes('PlantUML')) {
+                errorMessage = 'Failed to render PlantUML diagram';
+            } else if (error.message.includes('timeout')) {
+                errorMessage = 'PlantUML rendering timed out';
             }
 
-            this.renderError(new Error(`PlantUML rendering failed: ${errorMessage}`));
+            throw new Error(errorMessage);
         }
+    }
+
+    /**
+     * Applies SVG normalization and pan/zoom behaviour for previews
+     * @param {SVGElement|null} svgElement - SVG element to enhance
+     * @param {Object} [options={}] - Additional pan/zoom options
+     * @private
+     */
+    applySvgPanZoom(svgElement, options = {}) {
+        if (!svgElement) {
+            console.warn('SVG element not found for preview rendering');
+            return;
+        }
+
+        svgElement.removeAttribute('width');
+        svgElement.removeAttribute('height');
+        svgElement.style.maxWidth = 'none';
+        svgElement.style.width = 'auto';
+        svgElement.style.height = 'auto';
+        svgElement.style.display = 'block';
+
+        if (!window.svgPanZoom) {
+            return null;
+        }
+
+        if (svgElement._panZoomInstance && typeof svgElement._panZoomInstance.destroy === 'function') {
+            svgElement._panZoomInstance.destroy();
+        }
+
+        const defaultOptions = {
+            zoomEnabled: true,
+            controlIconsEnabled: true,
+            fit: true,
+            contain: true,
+            center: true,
+            minZoom: 0.5,
+            maxZoom: 10,
+            zoomScaleSensitivity: 0.2,
+            dblClickZoomEnabled: true,
+            mouseWheelZoomEnabled: true,
+            preventMouseEventsDefault: false
+        };
+
+        svgElement._panZoomInstance = svgPanZoom(svgElement, { ...defaultOptions, ...options });
+        return svgElement._panZoomInstance;
     }
 
     /**
@@ -1019,31 +1079,14 @@ export class DiagramView {
      * @public
      */
     showFullscreenModal() {
-        if (!this.elements.fullscreenModal || !this.elements.fullscreenPreview) {
+        const content = this.getCurrentDiagramContent();
+
+        if (!content) {
+            this.showNotification('No diagram to display in a new tab', 'warning');
             return;
         }
 
-        // Get current file content
-        const currentFile = window.diagramApp ? window.diagramApp.model.getCurrentFile() : null;
-        if (!currentFile || !currentFile.content) {
-            this.showNotification('No diagram to display in full screen', 'warning');
-            return;
-        }
-
-        // Clear previous content
-        this.elements.fullscreenPreview.innerHTML = '<div style="color: white; font-size: 24px;">Loading fullscreen preview...</div>';
-
-        // Store content for rendering
-        this._fullscreenContent = currentFile.content;
-
-        // Show modal
-        this.elements.fullscreenModal.show();
-
-        // Render after modal is shown (with small delay)
-        setTimeout(() => {
-            this.renderDiagramFullscreen(this._fullscreenContent);
-            this._fullscreenContent = null;
-        }, 300);
+        this.openDiagramInNewTab(content);
     }
 
     /**
@@ -1052,14 +1095,12 @@ export class DiagramView {
      * @private
      */
     renderDiagramFullscreen(code) {
-        console.log('Rendering diagram in fullscreen:', code.substring(0, 100) + '...');
         let renderType;
         if (this.previewMode === 'auto') {
             renderType = this.detectFileType(code);
         } else {
             renderType = this.previewMode;
         }
-        console.log('Detected render type:', renderType);
 
         try {
             if (renderType === 'mermaid') {
@@ -1081,7 +1122,6 @@ export class DiagramView {
      * @private
      */
     renderMermaidFullscreen(code) {
-        console.log('Rendering Mermaid in fullscreen');
         if (!window.mermaid || !this.elements.fullscreenPreview) {
             throw new Error('Mermaid library not loaded');
         }
@@ -1093,41 +1133,13 @@ export class DiagramView {
         });
 
         const renderCallback = (svgCode) => {
-            console.log('Mermaid render callback received SVG');
             this.elements.fullscreenPreview.innerHTML = svgCode;
             const svgElement = this.elements.fullscreenPreview.querySelector('svg');
-            if (svgElement && window.svgPanZoom) {
-                console.log('Applying svgPanZoom to fullscreen SVG');
-                // Remove fixed dimensions to show full diagram
-                svgElement.removeAttribute('width');
-                svgElement.removeAttribute('height');
-                svgElement.style.maxWidth = 'none';
-                svgElement.style.width = 'auto';
-                svgElement.style.height = 'auto';
-                
-                // Enhanced pan and zoom for fullscreen
-                svgPanZoom(svgElement, {
-                    zoomEnabled: true,
-                    controlIconsEnabled: true,
-                    fit: false,
-                    contain: false,
-                    center: false,
-                    minZoom: 0.1,
-                    maxZoom: 20,
-                    zoomScaleSensitivity: 0.2,
-                    dblClickZoomEnabled: true,
-                    mouseWheelZoomEnabled: true,
-                    preventMouseEventsDefault: false
-                });
-            } else {
-                console.warn('SVG element or svgPanZoom not found');
-            }
+            this.applyFullscreenSvgBehavior(svgElement);
         };
 
         const id = 'fullscreen-mermaid-' + Date.now();
-        console.log('Calling mermaid.render with id:', id);
         window.mermaid.render(id, code).then(({ svg }) => {
-            console.log('Mermaid render promise resolved');
             renderCallback(svg);
         }).catch(error => {
             console.error('Mermaid render failed:', error);
@@ -1157,34 +1169,141 @@ export class DiagramView {
 
             this.elements.fullscreenPreview.innerHTML = svgText;
             const svgElement = this.elements.fullscreenPreview.querySelector('svg');
-
-            if (svgElement && window.svgPanZoom) {
-                // Remove fixed dimensions to show full diagram
-                svgElement.removeAttribute('width');
-                svgElement.removeAttribute('height');
-                svgElement.style.maxWidth = 'none';
-                svgElement.style.width = 'auto';
-                svgElement.style.height = 'auto';
-
-                // Enhanced pan and zoom for fullscreen
-                svgPanZoom(svgElement, {
-                    zoomEnabled: true,
-                    controlIconsEnabled: true,
-                    fit: false,
-                    contain: false,
-                    center: false,
-                    minZoom: 0.1,
-                    maxZoom: 20,
-                    zoomScaleSensitivity: 0.2,
-                    dblClickZoomEnabled: true,
-                    mouseWheelZoomEnabled: true,
-                    preventMouseEventsDefault: false
-                });
-            }
+            this.applyFullscreenSvgBehavior(svgElement);
         } catch (error) {
             console.error('PlantUML fullscreen rendering failed:', error);
             this.renderErrorFullscreen(new Error(`PlantUML fullscreen rendering failed: ${error.message}`));
         }
+    }
+
+    /**
+     * Applies consistent fullscreen behaviors to rendered SVG elements
+     * @param {SVGElement|null} svgElement - SVG element to normalize
+     * @private
+     */
+    applyFullscreenSvgBehavior(svgElement) {
+        if (!svgElement) {
+            console.warn('SVG element not found for fullscreen rendering');
+            return;
+        }
+
+        const serialized = new XMLSerializer().serializeToString(svgElement);
+        this.openSvgInNewTab(serialized);
+    }
+
+    /**
+     * Retrieves the current diagram content from editor or model
+     * @returns {string|null} Diagram content or null if unavailable
+     * @public
+     */
+    getCurrentDiagramContent() {
+        let content = '';
+
+        if (this.editor) {
+            content = this.editor.getValue() || '';
+        }
+
+        if (!content || !content.trim()) {
+            const currentFile = window.diagramApp ? window.diagramApp.model.getCurrentFile() : null;
+            content = currentFile ? currentFile.content || '' : '';
+        }
+
+        return content && content.trim().length ? content : null;
+    }
+
+    /**
+     * Opens diagram content in a new browser tab
+     * @param {string} content - Diagram source
+     * @private
+     */
+    openDiagramInNewTab(content) {
+        const type = this.detectFileType(content);
+
+        if (type === 'mermaid') {
+            this.renderMermaidToNewTab(content);
+        } else if (type === 'plantuml') {
+            this.renderPlantumlToNewTab(content);
+        } else {
+            this.openPlainTextInNewTab(content);
+        }
+    }
+
+    /**
+     * Renders Mermaid content into a new tab
+     * @param {string} content - Mermaid source
+     * @private
+     */
+    async renderMermaidToNewTab(content) {
+        if (!window.mermaid) {
+            this.showNotification('Mermaid library not loaded', 'error');
+            return;
+        }
+
+        const theme = document.documentElement.getAttribute('data-theme') === 'light' ? 'default' : 'dark';
+
+        window.mermaid.initialize({
+            startOnLoad: false,
+            theme,
+            securityLevel: 'loose'
+        });
+
+        try {
+            const { svg } = await window.mermaid.render('new-tab-mermaid-' + Date.now(), content);
+            this.openSvgInNewTab(svg);
+        } catch (error) {
+            this.showNotification(`Mermaid rendering failed: ${error.message}`, 'error');
+        }
+    }
+
+    /**
+     * Renders PlantUML content into a new tab
+     * @param {string} content - PlantUML source
+     * @private
+     */
+    async renderPlantumlToNewTab(content) {
+        if (!window.plantumlEncoder) {
+            this.showNotification('PlantUML encoder not loaded', 'error');
+            return;
+        }
+
+        try {
+            const encoded = window.plantumlEncoder.encode(content);
+            const imageUrl = `https://www.plantuml.com/plantuml/svg/${encoded}`;
+            const response = await fetch(imageUrl);
+
+            if (!response.ok) {
+                throw new Error(`Failed to fetch PlantUML diagram: ${response.statusText}`);
+            }
+
+            const svgText = await response.text();
+            this.openSvgInNewTab(svgText);
+        } catch (error) {
+            this.showNotification(`PlantUML rendering failed: ${error.message}`, 'error');
+        }
+    }
+
+    /**
+     * Opens plain text content in a new tab
+     * @param {string} content - Text content
+     * @private
+     */
+    openPlainTextInNewTab(content) {
+        const blob = new Blob([`<pre style="font-family: monospace; padding: 16px;">${this.escapeHtml(content)}</pre>`], {
+            type: 'text/html'
+        });
+        const url = URL.createObjectURL(blob);
+        window.open(url, '_blank', 'noopener');
+    }
+
+    /**
+     * Opens SVG markup in a new tab
+     * @param {string} svgMarkup - SVG markup
+     * @private
+     */
+    openSvgInNewTab(svgMarkup) {
+        const blob = new Blob([svgMarkup], { type: 'image/svg+xml' });
+        const url = URL.createObjectURL(blob);
+        window.open(url, '_blank', 'noopener');
     }
 
     /**

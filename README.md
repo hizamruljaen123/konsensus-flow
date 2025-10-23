@@ -11,6 +11,8 @@ A powerful VS Code-style diagram viewer and editor built with native JavaScript,
 - **Export Options**: Download diagrams as SVG or PNG
 - **Markdown Support**: Render and preview Markdown files
 - **Context Menus**: Right-click menus for quick actions
+- **AI Assistant**: Built-in Gemini chatbot that can draft diagrams or docs directly into the editor
+- **Enhanced Preview**: Improved Mermaid/PlantUML rendering with fullscreen zoom and better scaling
 
 ## Quick Start
 
@@ -19,6 +21,27 @@ A powerful VS Code-style diagram viewer and editor built with native JavaScript,
 3. **Start Writing**: Begin typing your diagram code or content
 4. **Preview**: See real-time rendering in the preview panel
 5. **Save**: Your work is automatically saved
+6. **Use the AI Assistant (Optional)**: Open the chatbot panel, ask Gemini for a diagram snippet, and it will overwrite the editor with the generated code
+
+> Chatbot replies replace the entire editor content. Save your work or duplicate the file before inserting new AI-generated snippets.
+
+## AI Assistant (Gemini)
+
+- Configure your Gemini API key and model in `js/config.js`:
+
+```javascript
+const CONFIG = {
+    GEMINI_API_KEY: 'your-key-here',
+    GEMINI_MODEL: 'gemini-2.0-flash',
+    GEMINI_BASE_URL: 'https://generativelanguage.googleapis.com/v1beta',
+    SITE_URL: 'http://127.0.0.1:5500/editor.html',
+    SITE_NAME: 'Konsensus Flow - Professional Diagram IDE'
+};
+```
+
+- The chatbot lives in the right sidebar. Toggle it from the toolbar, submit a prompt, and the response will be rendered in the chat pane and copied into the Ace editor.
+- Fullscreen mode is available for longer chats.
+- The integration uses the `generateContent` endpoint (`/models/{model}:generateContent`). Ensure your API key has access to the selected model.
 
 ## Supported Formats
 
