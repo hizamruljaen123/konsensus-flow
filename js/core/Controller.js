@@ -532,9 +532,11 @@ Learn more about Markdown: [Markdown Guide](https://www.markdownguide.org/)`
      * @private
      */
     handleSaveFile() {
-        const content = this.view.elements.fileEditor.value;
-        this.model.saveCurrentFile(content);
-        this.view.showNotification('File saved successfully!', 'success');
+        if (this.view.editor) {
+            const content = this.view.editor.getValue();
+            this.model.saveCurrentFile(content);
+            this.view.showNotification('File saved successfully!', 'success');
+        }
     }
 
     /**

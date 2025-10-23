@@ -38,6 +38,13 @@ export class DiagramView {
         this.selectedItemId = null;
 
         /**
+         * Ace Editor instance
+         * @type {Object|null}
+         * @private
+         */
+        this.editor = null;
+
+        /**
          * Context menu target item ID
          * @type {string|null}
          * @private
@@ -53,6 +60,7 @@ export class DiagramView {
 
         // Initialize view
         this.initializeView();
+        this.initializeEditor();
     }
 
     /**
@@ -93,7 +101,10 @@ export class DiagramView {
             fileTypeModal: bootstrap.Modal ? new bootstrap.Modal(document.getElementById('fileTypeModal')) : null,
             fileLocation: document.getElementById('file-location'),
             fileNameInput: document.getElementById('file-name-input'),
-            previewMode: document.getElementById('preview-mode')
+            previewMode: document.getElementById('preview-mode'),
+            fullscreenBtn: document.getElementById('fullscreen-btn'),
+            fullscreenModal: bootstrap.Modal ? new bootstrap.Modal(document.getElementById('fullscreenModal')) : null,
+            fullscreenPreview: document.getElementById('fullscreen-preview')
         };
     }
 
@@ -102,6 +113,11 @@ export class DiagramView {
      * @private
      */
     initializeView() {
+        // Set default theme to light
+        if (!document.documentElement.getAttribute('data-theme')) {
+            document.documentElement.setAttribute('data-theme', 'light');
+        }
+
         this.setupEventListeners();
         this.setupContextMenu();
     }
@@ -118,17 +134,6 @@ export class DiagramView {
             });
         }
 
-        // File editor auto-render with debouncing
-        if (this.elements.fileEditor) {
-            let renderTimeout;
-            this.elements.fileEditor.addEventListener('input', (e) => {
-                clearTimeout(renderTimeout);
-                renderTimeout = setTimeout(() => {
-                    const code = e.target.value;
-                    this.renderDiagram(code);
-                }, 500);
-            });
-        }
 
         // Preview mode change
         if (this.elements.previewMode) {
@@ -140,6 +145,14 @@ export class DiagramView {
                 if (currentFile) {
                     this.renderDiagram(currentFile.content);
                 }
+            });
+        }
+
+        // Fullscreen button
+        if (this.elements.fullscreenBtn) {
+            this.elements.fullscreenBtn.addEventListener('click', () => {
+                console.log('Fullscreen button clicked');
+                this.showFullscreenModal();
             });
         }
 
@@ -212,7 +225,7 @@ export class DiagramView {
      * @public
      */
     toggleTheme() {
-        const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+        const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
         const newTheme = currentTheme === 'light' ? 'dark' : 'light';
 
         document.documentElement.setAttribute('data-theme', newTheme);
@@ -222,6 +235,11 @@ export class DiagramView {
         if (icon) {
             icon.className = newTheme === 'light' ? 'fas fa-moon' : 'fas fa-sun';
         }
+
+        // Update Ace Editor theme
+        if (this.editor) {
+            this.editor.setTheme(newTheme === 'light' ? 'ace/theme/chrome' : 'ace/theme/monokai');
+        }
     }
 
     /**
@@ -230,10 +248,6 @@ export class DiagramView {
      * @public
      */
     update(model) {
-        // Update project title
-        if (this.elements.projectTitle && model.getCurrentProject()) {
-            this.elements.projectTitle.textContent = model.getCurrentProject().name;
-        }
 
         // Update project tree
         this.updateProjectTree(model);
@@ -340,7 +354,9 @@ export class DiagramView {
 
         if (file) {
             this.elements.fileNameDisplay.textContent = file.name;
-            this.elements.fileEditor.value = file.content;
+            if (this.editor) {
+                this.editor.setValue(file.content, -1); // -1 moves cursor to start
+            }
 
             // Enable toolbar buttons
             this.setToolbarButtonState(true);
@@ -350,7 +366,9 @@ export class DiagramView {
             this.updateFileTypeBadge(fileType);
         } else {
             this.elements.fileNameDisplay.textContent = 'Untitled';
-            this.elements.fileEditor.value = '';
+            if (this.editor) {
+                this.editor.setValue('', -1);
+            }
 
             // Disable toolbar buttons
             this.setToolbarButtonState(false);
@@ -531,6 +549,17 @@ export class DiagramView {
 
         window.mermaid.render('mermaid-diagram', code).then(({ svg }) => {
             this.elements.diagramPreview.innerHTML = svg;
+            const svgElement = this.elements.diagramPreview.querySelector('svg');
+            if (svgElement && window.svgPanZoom) {
+                svgPanZoom(svgElement, {
+                    zoomEnabled: true,
+                    controlIconsEnabled: true,
+                    fit: true,
+                    center: true,
+                    minZoom: 0.5,
+                    maxZoom: 10
+                });
+            }
         }).catch(error => {
             throw new Error(`Mermaid rendering failed: ${error.message}`);
         });
@@ -541,19 +570,43 @@ export class DiagramView {
      * @param {string} code - PlantUML code
      * @private
      */
-    renderPlantuml(code) {
+    async renderPlantuml(code) {
         if (!window.plantumlEncoder || !this.elements.diagramPreview) {
             throw new Error('PlantUML encoder not loaded');
         }
 
-        const encoded = window.plantumlEncoder.encode(code);
-        const img = document.createElement('img');
-        img.src = `https://www.plantuml.com/plantuml/svg/${encoded}`;
-        img.alt = 'PlantUML Diagram';
-        img.style.maxWidth = '100%';
-        img.style.height = 'auto';
+        try {
+            const encoded = window.plantumlEncoder.encode(code);
+            const imageUrl = `https://www.plantuml.com/plantuml/svg/${encoded}`;
+            
+            const response = await fetch(imageUrl);
+            if (!response.ok) {
+                throw new Error(`Failed to fetch PlantUML diagram: ${response.statusText}`);
+            }
+            const svgText = await response.text();
 
-        this.elements.diagramPreview.appendChild(img);
+            this.elements.diagramPreview.innerHTML = svgText;
+            const svgElement = this.elements.diagramPreview.querySelector('svg');
+
+            if (svgElement && window.svgPanZoom) {
+                svgElement.style.width = '100%';
+                svgElement.style.height = '100%';
+                svgElement.removeAttribute('width');
+                svgElement.removeAttribute('height');
+
+                svgPanZoom(svgElement, {
+                    zoomEnabled: true,
+                    controlIconsEnabled: true,
+                    fit: true,
+                    center: true,
+                    minZoom: 0.5,
+                    maxZoom: 10
+                });
+            }
+        } catch (error) {
+            console.error('PlantUML rendering failed:', error);
+            this.renderError(new Error(`PlantUML rendering failed: ${error.message}`));
+        }
     }
 
     /**
@@ -889,6 +942,235 @@ export class DiagramView {
             }
         }, 3000);
     }
+
+    /**
+     * Shows fullscreen modal with diagram preview
+     * @public
+     */
+    showFullscreenModal() {
+        if (!this.elements.fullscreenModal || !this.elements.fullscreenPreview) {
+            return;
+        }
+
+        // Get current file content
+        const currentFile = window.diagramApp ? window.diagramApp.model.getCurrentFile() : null;
+        if (!currentFile || !currentFile.content) {
+            this.showNotification('No diagram to display in full screen', 'warning');
+            return;
+        }
+
+        // Clear previous content
+        this.elements.fullscreenPreview.innerHTML = '<div style="color: white; font-size: 24px;">Loading fullscreen preview...</div>';
+
+        // Store content for rendering
+        this._fullscreenContent = currentFile.content;
+
+        // Show modal
+        this.elements.fullscreenModal.show();
+
+        // Render after modal is shown (with small delay)
+        setTimeout(() => {
+            this.renderDiagramFullscreen(this._fullscreenContent);
+            this._fullscreenContent = null;
+        }, 300);
+    }
+
+    /**
+     * Renders diagram in fullscreen mode with enhanced pan and zoom
+     * @param {string} code - Diagram code
+     * @private
+     */
+    renderDiagramFullscreen(code) {
+        console.log('Rendering diagram in fullscreen:', code.substring(0, 100) + '...');
+        let renderType;
+        if (this.previewMode === 'auto') {
+            renderType = this.detectFileType(code);
+        } else {
+            renderType = this.previewMode;
+        }
+        console.log('Detected render type:', renderType);
+
+        try {
+            if (renderType === 'mermaid') {
+                this.renderMermaidFullscreen(code);
+            } else if (renderType === 'plantuml') {
+                this.renderPlantumlFullscreen(code);
+            } else {
+                this.renderPlainTextFullscreen(code);
+            }
+        } catch (error) {
+            console.error('Error rendering fullscreen diagram:', error);
+            this.renderErrorFullscreen(error);
+        }
+    }
+
+    /**
+     * Renders Mermaid diagram in fullscreen
+     * @param {string} code - Mermaid code
+     * @private
+     */
+    renderMermaidFullscreen(code) {
+        console.log('Rendering Mermaid in fullscreen');
+        if (!window.mermaid || !this.elements.fullscreenPreview) {
+            throw new Error('Mermaid library not loaded');
+        }
+
+        window.mermaid.initialize({
+            startOnLoad: false,
+            theme: document.documentElement.getAttribute('data-theme') === 'light' ? 'default' : 'dark',
+            securityLevel: 'loose'
+        });
+
+        const renderCallback = (svgCode) => {
+            console.log('Mermaid render callback received SVG');
+            this.elements.fullscreenPreview.innerHTML = svgCode;
+            const svgElement = this.elements.fullscreenPreview.querySelector('svg');
+            if (svgElement && window.svgPanZoom) {
+                console.log('Applying svgPanZoom to fullscreen SVG');
+                // Enhanced pan and zoom for fullscreen
+                svgPanZoom(svgElement, {
+                    zoomEnabled: true,
+                    controlIconsEnabled: true,
+                    fit: true,
+                    center: true,
+                    minZoom: 0.1,
+                    maxZoom: 20,
+                    zoomScaleSensitivity: 0.2,
+                    dblClickZoomEnabled: true,
+                    mouseWheelZoomEnabled: true,
+                    preventMouseEventsDefault: false
+                });
+            } else {
+                console.warn('SVG element or svgPanZoom not found');
+            }
+        };
+
+        const id = 'fullscreen-mermaid-' + Date.now();
+        console.log('Calling mermaid.render with id:', id);
+        window.mermaid.render(id, code).then(({ svg }) => {
+            console.log('Mermaid render promise resolved');
+            renderCallback(svg);
+        }).catch(error => {
+            console.error('Mermaid render failed:', error);
+            throw new Error(`Mermaid fullscreen rendering failed: ${error.message}`);
+        });
+    }
+
+    /**
+     * Renders PlantUML diagram in fullscreen
+     * @param {string} code - PlantUML code
+     * @private
+     */
+    async renderPlantumlFullscreen(code) {
+        if (!window.plantumlEncoder || !this.elements.fullscreenPreview) {
+            throw new Error('PlantUML encoder not loaded');
+        }
+
+        try {
+            const encoded = window.plantumlEncoder.encode(code);
+            const imageUrl = `https://www.plantuml.com/plantuml/svg/${encoded}`;
+
+            const response = await fetch(imageUrl);
+            if (!response.ok) {
+                throw new Error(`Failed to fetch PlantUML diagram: ${response.statusText}`);
+            }
+            const svgText = await response.text();
+
+            this.elements.fullscreenPreview.innerHTML = svgText;
+            const svgElement = this.elements.fullscreenPreview.querySelector('svg');
+
+            if (svgElement && window.svgPanZoom) {
+                svgElement.style.width = '100%';
+                svgElement.style.height = '100%';
+                svgElement.removeAttribute('width');
+                svgElement.removeAttribute('height');
+
+                // Enhanced pan and zoom for fullscreen
+                svgPanZoom(svgElement, {
+                    zoomEnabled: true,
+                    controlIconsEnabled: true,
+                    fit: true,
+                    center: true,
+                    minZoom: 0.1,
+                    maxZoom: 20,
+                    zoomScaleSensitivity: 0.2,
+                    dblClickZoomEnabled: true,
+                    mouseWheelZoomEnabled: true,
+                    preventMouseEventsDefault: false
+                });
+            }
+        } catch (error) {
+            console.error('PlantUML fullscreen rendering failed:', error);
+            this.renderErrorFullscreen(new Error(`PlantUML fullscreen rendering failed: ${error.message}`));
+        }
+    }
+
+    /**
+     * Renders plain text in fullscreen
+     * @param {string} code - Text content
+     * @private
+     */
+    renderPlainTextFullscreen(code) {
+        const pre = document.createElement('pre');
+        pre.className = 'text-muted p-4';
+        pre.style.fontFamily = "'Consolas', 'Monaco', 'Courier New', monospace";
+        pre.style.fontSize = '1.2rem';
+        pre.style.whiteSpace = 'pre-wrap';
+        pre.style.wordWrap = 'break-word';
+        pre.style.maxWidth = '90%';
+        pre.style.margin = 'auto';
+        pre.textContent = code || 'No content to display';
+
+        this.elements.fullscreenPreview.appendChild(pre);
+    }
+
+    /**
+     * Renders error message in fullscreen
+     * @param {Error} error - Error object
+     * @private
+     */
+    renderErrorFullscreen(error) {
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'd-flex align-items-center justify-content-center h-100 text-center text-danger';
+        errorDiv.innerHTML = `
+            <div>
+                <i class="fas fa-exclamation-triangle fa-4x mb-4"></i>
+                <p style="font-size: 1.5rem;">Error rendering diagram: ${error.message}</p>
+            </div>
+        `;
+
+        this.elements.fullscreenPreview.appendChild(errorDiv);
+    }
+
+    /**
+     * Initializes the Ace Editor
+     * @private
+     */
+    initializeEditor() {
+        if (ace && this.elements.fileEditor) {
+            this.editor = ace.edit(this.elements.fileEditor);
+            this.editor.setTheme('ace/theme/chrome'); // Default to light theme
+            this.editor.session.setMode('ace/mode/markdown'); // Default mode
+            this.editor.setShowPrintMargin(false);
+            this.editor.setOptions({
+                fontSize: '14px',
+                enableBasicAutocompletion: true,
+                enableLiveAutocompletion: true,
+                enableSnippets: true
+            });
+
+            // Set up auto-render with debouncing
+            let renderTimeout;
+            this.editor.on('change', () => {
+                clearTimeout(renderTimeout);
+                renderTimeout = setTimeout(() => {
+                    const code = this.editor.getValue();
+                    this.renderDiagram(code);
+                }, 500);
+            });
+        }
+    }
+
 }
 
 // Default export for convenience
