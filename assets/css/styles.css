@@ -274,6 +274,21 @@ body {
   margin-bottom: 0;
 }
 
+/* Pan and Zoom Controls */
+.pan-zoom-controls {
+  background-color: var(--vscode-bg);
+  border: 1px solid var(--vscode-border);
+  border-radius: 3px;
+  padding: 4px;
+  margin-bottom: 8px;
+}
+
+/* Hide pan-zoom controls in full-diagram mode */
+.preview-content.full-diagram + .pan-zoom-controls,
+.pan-zoom-controls:has(+ .preview-content.full-diagram) {
+  display: none !important;
+}
+
 /* Card Styles */
 .vscode-card {
   background-color: var(--vscode-card-bg);
@@ -725,6 +740,14 @@ body {
   flex-direction: column;
   align-items: flex-start;
   justify-content: flex-start;
+  box-sizing: border-box;
+}
+
+.preview-content.full-diagram {
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
 }
 
 .preview-placeholder {
@@ -738,11 +761,22 @@ body {
 }
 
 .preview-content svg {
-  max-width: none !important;
+  max-width: 100% !important;
   width: auto !important;
   height: auto !important;
-  min-width: 100%;
+  min-width: unset;
   margin-bottom: 12px;
+  flex-shrink: 0;
+}
+
+.preview-content.full-diagram svg {
+  max-width: none !important;
+  max-height: none !important;
+  width: 100% !important;
+  height: 100% !important;
+  margin: 0;
+  object-fit: contain;
+  display: block;
 }
 
 .preview-content img {
@@ -821,6 +855,94 @@ body {
 
 .chatbot-panel.collapsed .panel-content {
     display: none;
+}
+
+/* Error Panel Styles */
+.error-panel {
+    flex-shrink: 0; /* Prevent panel from shrinking */
+    height: 200px; /* Fixed height for the error panel */
+    display: flex;
+    flex-direction: column;
+    background-color: var(--vscode-bg);
+    border-top: 1px solid var(--vscode-border);
+    border-bottom: 1px solid var(--vscode-border);
+    transition: height 0.3s ease;
+}
+
+.error-panel.collapsed {
+    height: 38px; /* Height of the panel header */
+}
+
+.error-panel.collapsed .panel-content {
+    display: none;
+}
+
+.error-messages {
+    padding: 10px;
+    flex-grow: 1;
+    overflow-y: auto;
+}
+
+.error-message {
+    margin-bottom: 12px;
+    padding: 12px 16px;
+    border-radius: 8px;
+    background-color: var(--vscode-hover);
+    border: 1px solid var(--vscode-border);
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 0.9rem;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    color: var(--vscode-text);
+}
+
+.error-message.error {
+    background-color: #f8d7da;
+    border-color: #dc3545;
+    color: #721c24;
+}
+
+.error-message.warning {
+    background-color: #fff3cd;
+    border-color: #ffc107;
+    color: #856404;
+}
+
+.error-message.success {
+    background-color: #d1ecf1;
+    border-color: #17a2b8;
+    color: #0c5460;
+}
+
+.error-message .error-actions {
+    margin-top: 8px;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.error-message .error-actions .btn {
+    padding: 4px 8px;
+    font-size: 0.8rem;
+    border-radius: 4px;
+}
+
+.error-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    text-align: center;
+    color: var(--vscode-text-secondary);
+    padding: 20px;
+}
+
+.error-placeholder i {
+    font-size: 2rem;
+    margin-bottom: 10px;
+    color: var(--vscode-text-secondary);
 }
 
 .chatbot-panel .panel-content {

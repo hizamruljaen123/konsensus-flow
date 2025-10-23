@@ -379,30 +379,56 @@ export class FileSystem {
     }
 
     /**
-     * Imports project from JSON data
-     * @param {Object} importData - Imported project data
-     * @returns {Object} New project object
+     * Gets all folder paths in the current project for UI dropdowns
+     * @returns {Array} Array of folder paths
      * @public
      */
-    importProject(importData) {
-        if (!importData || !importData.name) {
-            throw new Error('Invalid import data');
+    getFolderPaths() {
+        const project = this.getCurrentProject();
+        if (!project) {
+            return [];
         }
 
-        const project = this.createProject(importData.name || 'Imported Project');
+        const folders = [];
 
-        // Import files
-        if (importData.files) {
-            for (const [path, fileData] of Object.entries(importData.files)) {
-                const pathParts = path.split('/');
-                const fileName = pathParts[pathParts.length - 1];
-                const parentPath = pathParts.slice(0, -1).join('/') || '/';
-
-                this.createItem(parentPath, fileName, 'file', fileData.content);
+        const collectFolders = (itemId) => {
+            const item = project.files[itemId];
+            if (!item || item.type !== 'folder') {
+                return;
             }
-        }
 
-        return project;
+            folders.push({
+                id: itemId,
+                path: item.path,
+                name: item.name
+            });
+
+            if (Array.isArray(item.children)) {
+                item.children.forEach(childId => collectFolders(childId));
+            }
+        };
+
+        collectFolders('root');
+        return folders;
+    }
+
+    /**
+     * Gets all folder paths as simple string array for dropdown options
+     * @returns {Array} Array of folder path strings
+     * @public
+     */
+    getFolderPathStrings() {
+        const paths = this.getFolderPaths().map(folder => folder.path || '/');
+
+        // Ensure root path is included first and remove duplicates
+        const unique = new Set(['/']);
+        paths.forEach(path => {
+            if (path && path !== '/') {
+                unique.add(path);
+            }
+        });
+
+        return Array.from(unique);
     }
 }
 

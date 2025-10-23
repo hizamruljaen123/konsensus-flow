@@ -151,6 +151,36 @@ class Chatbot {
         }
     }
 
+    /**
+     * Send a message programmatically to the chatbot
+     * @param {string} message - The message to send
+     * @param {boolean} isFullscreen - Whether to send to fullscreen chat
+     * @public
+     */
+    async sendMessageProgrammatically(message, isFullscreen = false) {
+        if (!message || !message.trim()) return;
+
+        this.addMessage('user', message.trim(), isFullscreen);
+
+        // Show typing indicator
+        this.showTyping(isFullscreen);
+
+        try {
+            const response = await this.callGeminiAPI(message.trim());
+            this.hideTyping(isFullscreen);
+            this.addMessage('bot', response, isFullscreen);
+
+            // Process code insertion only for non-fullscreen mode
+            if (!isFullscreen) {
+                this.processCodeInResponse(response);
+            }
+        } catch (error) {
+            this.hideTyping(isFullscreen);
+            this.addMessage('bot', 'Sorry, I encountered an error. Please try again.', isFullscreen);
+            console.error('Chatbot error:', error);
+        }
+    }
+
     async callGeminiAPI(message) {
         const endpoint = `${CONFIG.GEMINI_BASE_URL.replace(/\/$/, '')}/models/${CONFIG.GEMINI_MODEL}:generateContent`;
         const response = await fetch(endpoint, {

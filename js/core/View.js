@@ -14,6 +14,12 @@
 'use strict';
 
 import { detectDiagramType } from '../utils/DiagramUtils.js';
+import { RenderingEngine } from '../rendering/RenderingEngine.js';
+import { PanZoom } from './PanZoom.js';
+import { startInlineEdit as startInlineEditHelper, finishInlineEdit as finishInlineEditHelper, showNotification as showNotificationHelper, escapeHtml, getFileTypeBadgeInfo } from '../view/UIHelpers.js';
+import { buildProjectTreeHtml } from '../view/TreeRenderer.js';
+import { attachEventListeners, attachContextMenu } from '../view/ViewEvents.js';
+import { ErrorPanelManager } from '../view/ErrorPanelManager.js';
 
 /**
  * DiagramView class - Manages UI rendering and user interactions
@@ -22,9 +28,11 @@ import { detectDiagramType } from '../utils/DiagramUtils.js';
 export class DiagramView {
     /**
      * Creates a new DiagramView instance
+     * @param {Object} [options={}]
+     * @param {RenderingEngine} [options.renderingEngine] - Rendering engine dependency
      * @constructor
      */
-    constructor() {
+    constructor({ renderingEngine = new RenderingEngine() } = {}) {
         /**
          * DOM element cache for performance
          * @type {Object}
@@ -59,6 +67,20 @@ export class DiagramView {
          * @private
          */
         this.previewMode = 'auto';
+
+        /**
+         * Rendering engine dependency
+         * @type {RenderingEngine}
+         * @private
+         */
+        this.renderingEngine = renderingEngine;
+
+        /**
+         * Error panel manager
+         * @type {ErrorPanelManager}
+         * @private
+         */
+        this.errorPanelManager = new ErrorPanelManager(this.elements, this);
 
         // Initialize view
         this.initializeView();
@@ -95,10 +117,23 @@ export class DiagramView {
             fileTypeBadge: document.getElementById('file-type-badge'),
             previewType: document.getElementById('preview-type'),
             diagramPreview: document.getElementById('diagram-preview'),
+            panZoomControls: document.getElementById('pan-zoom-controls'),
+            zoomInBtn: document.getElementById('zoom-in-btn'),
+            zoomOutBtn: document.getElementById('zoom-out-btn'),
+            zoomFitBtn: document.getElementById('zoom-fit-btn'),
+            zoomResetBtn: document.getElementById('zoom-reset-btn'),
+
+            // Error panel
+            errorPanel: document.getElementById('error-panel'),
+            errorMessages: document.getElementById('error-messages'),
+            errorCount: document.getElementById('error-count'),
+            clearErrorsBtn: document.getElementById('clear-errors-btn'),
+            toggleErrorPanel: document.getElementById('toggle-error-panel'),
 
             // Context menu
             contextMenu: document.getElementById('context-menu'),
-            renameModal: bootstrap.Modal ? new bootstrap.Modal(document.getElementById('renameModal')) : null,
+
+            // Modal elements
             renameInput: document.getElementById('rename-input'),
             fileTypeModal: bootstrap.Modal ? new bootstrap.Modal(document.getElementById('fileTypeModal')) : null,
             fileLocation: document.getElementById('file-location'),
@@ -120,76 +155,8 @@ export class DiagramView {
             document.documentElement.setAttribute('data-theme', 'light');
         }
 
-        this.setupEventListeners();
-        this.setupContextMenu();
-    }
-
-    /**
-     * Sets up event listeners for UI elements
-     * @private
-     */
-    setupEventListeners() {
-        // Theme toggle
-        if (this.elements.themeToggle) {
-            this.elements.themeToggle.addEventListener('click', () => {
-                this.toggleTheme();
-            });
-        }
-
-
-        // Preview mode change
-        if (this.elements.previewMode) {
-            this.elements.previewMode.addEventListener('change', (e) => {
-                this.previewMode = e.target.value;
-                this.updatePreviewType();
-                // Re-render current file content
-                const currentFile = window.diagramApp ? window.diagramApp.model.getCurrentFile() : null;
-                if (currentFile) {
-                    this.renderDiagram(currentFile.content);
-                }
-            });
-        }
-
-        // Fullscreen button
-        if (this.elements.fullscreenBtn) {
-            this.elements.fullscreenBtn.addEventListener('click', () => {
-                this.showFullscreenModal();
-            });
-        }
-
-        // Dropdown menu actions
-        document.addEventListener('click', (e) => {
-            const dropdownItem = e.target.closest('.dropdown-item');
-            if (dropdownItem) {
-                const action = dropdownItem.getAttribute('data-action');
-                const treeItem = dropdownItem.closest('.tree-item');
-                if (treeItem && action) {
-                    e.preventDefault();
-                    this.handleDropdownAction(action, treeItem.getAttribute('data-id'));
-                }
-            }
-        });
-    }
-
-    /**
-     * Sets up context menu functionality
-     * @private
-     */
-    setupContextMenu() {
-        // Hide context menu on outside click
-        document.addEventListener('click', (e) => {
-            if (!this.elements.contextMenu.contains(e.target)) {
-                this.hideContextMenu();
-            }
-        });
-
-        // Right-click on project tree (optional, can be removed if not needed)
-        if (this.elements.projectTree) {
-            this.elements.projectTree.addEventListener('contextmenu', (e) => {
-                e.preventDefault();
-                this.showContextMenu(e.clientX, e.clientY, e.target);
-            });
-        }
+        attachEventListeners(this);
+        attachContextMenu(this);
     }
 
     /**
@@ -273,126 +240,8 @@ export class DiagramView {
             return;
         }
 
-        const treeHtml = this.buildTreeHtml(project.files, 'root');
+        const treeHtml = buildProjectTreeHtml(project.files, 'root', this.selectedItemId);
         this.elements.projectTree.innerHTML = treeHtml;
-    }
-
-    /**
-     * Builds HTML for tree structure recursively
-     * @param {Object} files - Files collection
-     * @param {string} itemId - Current item ID
-     * @returns {string} HTML string
-     * @private
-     */
-    buildTreeHtml(files, itemId) {
-        const item = files[itemId];
-        if (!item) {
-            return '';
-        }
-
-        const isSelected = this.selectedItemId === itemId;
-        const isFolder = item.type === 'folder';
-        const isExpanded = item.expanded !== false;
-
-        const typeBadge = isFolder ? '' : this.getFileTypeBadge(item);
-
-        let html = `
-            <div class="tree-item ${isSelected ? 'selected' : ''} ${isFolder ? 'folder' : 'file'} ${!isExpanded ? 'collapsed' : ''}" data-id="${itemId}">
-                ${isFolder ? `<span class="toggle">${isExpanded ? '▼' : '▶'}</span>` : ''}
-                <div class="item-content">
-                    <i class="fas fa-${isFolder ? 'folder' : 'file'}"></i>
-                    <span class="name" ondblclick="window.diagramApp.view.startInlineEdit('${itemId}')">${this.escapeHtml(item.name)}</span>
-                    ${typeBadge}
-                </div>
-                <div class="dropdown">
-                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                        <i class="fas fa-ellipsis-h"></i>
-                    </button>
-                    <ul class="dropdown-menu">
-                        ${isFolder ? `
-                        <li><a class="dropdown-item" href="#" data-action="new-file"><i class="fas fa-file-plus me-2"></i>New File</a></li>
-                        <li><a class="dropdown-item" href="#" data-action="new-folder"><i class="fas fa-folder-plus me-2"></i>New Folder</a></li>
-                        <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item text-danger" href="#" data-action="delete"><i class="fas fa-trash me-2"></i>Delete</a></li>
-                        ` : `
-                        <li><a class="dropdown-item" href="#" data-action="download-svg"><i class="fas fa-image me-2"></i>Download SVG</a></li>
-                        <li><a class="dropdown-item" href="#" data-action="download-png"><i class="fas fa-file-image me-2"></i>Download PNG</a></li>
-                        <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item text-danger" href="#" data-action="delete"><i class="fas fa-trash me-2"></i>Delete</a></li>
-                        `}
-                    </ul>
-                </div>
-            </div>
-        `;
-
-        if (isFolder && isExpanded && item.children) {
-            html += '<div class="children">';
-            item.children.forEach(childId => {
-                html += this.buildTreeHtml(files, childId);
-            });
-            html += '</div>';
-        }
-
-        return html;
-    }
-
-    /**
-     * Generates file type badge HTML for a project tree item
-     * @param {Object} item - File item
-     * @returns {string} Badge HTML string
-     * @private
-     */
-    getFileTypeBadge(item) {
-        const typeInfo = this.resolveFileTypeInfo(item);
-        if (!typeInfo) {
-            return '';
-        }
-
-        return `<span class="file-type-badge ${typeInfo.className}">${typeInfo.label}</span>`;
-    }
-
-    /**
-     * Determines file type label/class from content or extension
-     * @param {Object} item - File item
-     * @returns {{label:string,className:string}|null}
-     * @private
-     */
-    resolveFileTypeInfo(item) {
-        if (!item || item.type !== 'file') {
-            return null;
-        }
-
-        const contentType = detectDiagramType(item.content || '');
-        if (contentType === 'mermaid') {
-            return { label: 'Mermaid', className: 'badge-mermaid' };
-        }
-
-        if (contentType === 'plantuml') {
-            return { label: 'PlantUML', className: 'badge-plantuml' };
-        }
-
-        const lowerName = (item.name || '').toLowerCase();
-        if (lowerName.endsWith('.md') || lowerName.endsWith('.markdown')) {
-            return { label: 'Markdown', className: 'badge-markdown' };
-        }
-
-        if (lowerName.endsWith('.txt')) {
-            return { label: 'Text', className: 'badge-text' };
-        }
-
-        return { label: 'File', className: 'badge-generic' };
-    }
-
-    /**
-     * Escapes HTML characters for safe display
-     * @param {string} text - Text to escape
-     * @returns {string} Escaped text
-     * @private
-     */
-    escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
     }
 
     /**
@@ -416,7 +265,7 @@ export class DiagramView {
 
             // Detect and update file type
             const fileType = this.detectFileType(file.content);
-            this.updateFileTypeBadge(fileType);
+            getFileTypeBadgeInfo(fileType);
         } else {
             this.elements.fileNameDisplay.textContent = 'Untitled';
             if (this.editor) {
@@ -426,7 +275,7 @@ export class DiagramView {
             // Disable toolbar buttons
             this.setToolbarButtonState(false);
 
-            this.updateFileTypeBadge('unknown');
+            getFileTypeBadgeInfo('unknown');
         }
 
         // Initialize preview mode dropdown
@@ -469,39 +318,6 @@ export class DiagramView {
     }
 
     /**
-     * Updates file type badge display
-     * @param {string} type - File type
-     * @private
-     */
-    updateFileTypeBadge(type) {
-        if (!this.elements.fileTypeBadge || !this.elements.previewType) {
-            return;
-        }
-
-        let badgeText = '';
-        let badgeClass = 'bg-secondary';
-        let previewText = this.getPreviewModeDisplayName();
-
-        switch (type) {
-            case 'mermaid':
-                badgeText = 'Mermaid';
-                badgeClass = 'bg-info';
-                break;
-            case 'plantuml':
-                badgeText = 'PlantUML';
-                badgeClass = 'bg-success';
-                break;
-            default:
-                badgeText = 'Text';
-                badgeClass = 'bg-secondary';
-        }
-
-        this.elements.fileTypeBadge.textContent = badgeText;
-        this.elements.fileTypeBadge.className = `badge ${badgeClass} ms-2`;
-        this.elements.previewType.textContent = previewText;
-    }
-
-    /**
      * Gets display name for current preview mode
      * @returns {string} Display name
      * @private
@@ -509,8 +325,8 @@ export class DiagramView {
     getPreviewModeDisplayName() {
         const modeNames = {
             auto: 'Auto-detect',
-            mermaid: 'Mermaid',
-            plantuml: 'PlantUML',
+            mermaid: 'Mermaid Diagram',
+            plantuml: 'PlantUML Diagram',
             txt: 'Plain Text',
             md: 'Markdown'
         };
@@ -532,183 +348,13 @@ export class DiagramView {
      * @param {string} code - Diagram code
      * @public
      */
-    renderDiagram(code) {
-        if (!this.elements.diagramPreview) {
-            return;
-        }
-
-        let renderType;
-        if (this.previewMode === 'auto') {
-            renderType = detectDiagramType(code);
-        } else {
-            renderType = this.previewMode;
-        }
-
-        // Clear previous content
-        this.elements.diagramPreview.innerHTML = '';
-
+    async renderDiagram(code) {
         try {
-            if (renderType === 'mermaid') {
-                this.renderMermaid(code);
-            } else if (renderType === 'plantuml') {
-                this.renderPlantuml(code);
-            } else if (renderType === 'md') {
-                this.renderMarkdown(code);
-            } else {
-                this.renderPlainText(code);
-            }
+            await this.renderingEngine.render(code, this.previewMode, this.elements.diagramPreview);
         } catch (error) {
             console.error('Error rendering diagram:', error);
             this.renderError(error);
         }
-    }
-
-    /**
-     * Renders Mermaid diagram
-     * @param {string} code - Mermaid code
-     * @private
-     */
-    renderMermaid(code) {
-        if (!window.mermaid || !this.elements.diagramPreview) {
-            throw new Error('Mermaid library not loaded');
-        }
-
-        const codeToRender = String(code || '');
-
-        window.mermaid.initialize({
-            startOnLoad: false,
-            theme: document.documentElement.getAttribute('data-theme') === 'light' ? 'default' : 'dark',
-            securityLevel: 'loose'
-        });
-
-        window.mermaid.render('mermaid-diagram', codeToRender).then(({ svg }) => {
-            this.elements.diagramPreview.innerHTML = svg;
-            const svgElement = this.elements.diagramPreview.querySelector('svg');
-            this.applySvgPanZoom(svgElement);
-        }).catch(error => {
-            throw new Error(`Mermaid rendering failed: ${error.message}`);
-        });
-    }
-
-    /**
-     * Renders PlantUML diagram
-     * @param {string} code - PlantUML code
-     * @private
-     */
-    async renderPlantuml(code) {
-        if (!window.plantumlEncoder || !this.elements.diagramPreview) {
-            throw new Error('PlantUML encoder not loaded');
-        }
-
-        // Validate PlantUML code
-        const trimmedCode = (code || '').trim();
-        if (!trimmedCode) {
-            throw new Error('PlantUML code is empty');
-        }
-
-        // Check if code starts with @startuml
-        if (!trimmedCode.startsWith('@startuml')) {
-            throw new Error('Invalid PlantUML code: must start with @startuml');
-        }
-
-        try {
-            console.log('Encoding PlantUML code, length:', trimmedCode.length);
-            const encoded = window.plantumlEncoder.encode(trimmedCode);
-
-            if (!encoded) {
-                throw new Error('Failed to encode PlantUML code');
-            }
-
-            const imageUrl = `https://www.plantuml.com/plantuml/svg/${encoded}`;
-            console.log('PlantUML URL length:', imageUrl.length);
-
-            // Check URL length limit (PlantUML has limits)
-            if (imageUrl.length > 2000) {
-                throw new Error('PlantUML code too complex. URL length exceeds limit.');
-            }
-
-            // Create AbortController for timeout
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-
-            const response = await fetch(imageUrl, {
-                signal: controller.signal
-            });
-
-            clearTimeout(timeoutId);
-
-            if (!response.ok) {
-                console.error('PlantUML server response:', response.status, response.statusText);
-                throw new Error(`PlantUML server error: ${response.status} ${response.statusText}`);
-            }
-
-            const svgText = await response.text();
-
-            if (!svgText || svgText.length < 100) {
-                throw new Error('Invalid PlantUML response: SVG too small');
-            }
-
-            this.elements.diagramPreview.innerHTML = svgText;
-            const svgElement = this.elements.diagramPreview.querySelector('svg');
-            this.applySvgPanZoom(svgElement);
-        } catch (error) {
-            console.error('PlantUML rendering failed:', error);
-
-            // Provide more specific error messages
-            let errorMessage = error.message;
-            if (error.message.includes('PlantUML')) {
-                errorMessage = 'Failed to render PlantUML diagram';
-            } else if (error.message.includes('timeout')) {
-                errorMessage = 'PlantUML rendering timed out';
-            }
-
-            throw new Error(errorMessage);
-        }
-    }
-
-    /**
-     * Applies SVG normalization and pan/zoom behaviour for previews
-     * @param {SVGElement|null} svgElement - SVG element to enhance
-     * @param {Object} [options={}] - Additional pan/zoom options
-     * @private
-     */
-    applySvgPanZoom(svgElement, options = {}) {
-        if (!svgElement) {
-            console.warn('SVG element not found for preview rendering');
-            return;
-        }
-
-        svgElement.removeAttribute('width');
-        svgElement.removeAttribute('height');
-        svgElement.style.maxWidth = 'none';
-        svgElement.style.width = 'auto';
-        svgElement.style.height = 'auto';
-        svgElement.style.display = 'block';
-
-        if (!window.svgPanZoom) {
-            return null;
-        }
-
-        if (svgElement._panZoomInstance && typeof svgElement._panZoomInstance.destroy === 'function') {
-            svgElement._panZoomInstance.destroy();
-        }
-
-        const defaultOptions = {
-            zoomEnabled: true,
-            controlIconsEnabled: true,
-            fit: true,
-            contain: true,
-            center: true,
-            minZoom: 0.5,
-            maxZoom: 10,
-            zoomScaleSensitivity: 0.2,
-            dblClickZoomEnabled: true,
-            mouseWheelZoomEnabled: true,
-            preventMouseEventsDefault: false
-        };
-
-        svgElement._panZoomInstance = svgPanZoom(svgElement, { ...defaultOptions, ...options });
-        return svgElement._panZoomInstance;
     }
 
     /**
@@ -717,6 +363,7 @@ export class DiagramView {
      * @private
      */
     renderPlainText(code) {
+        this.hidePanZoomControls();
         const pre = document.createElement('pre');
         pre.className = 'text-muted';
         pre.style.fontFamily = "'Consolas', 'Monaco', 'Courier New', monospace";
@@ -734,6 +381,7 @@ export class DiagramView {
      * @private
      */
     renderMarkdown(code) {
+        this.hidePanZoomControls();
         if (!window.marked) {
             throw new Error('Marked library not loaded');
         }
@@ -761,44 +409,16 @@ export class DiagramView {
      * @private
      */
     renderError(error) {
-        // Clear any previous content first
-        this.elements.diagramPreview.innerHTML = '';
+        this.errorPanelManager.renderError(error);
+    }
 
-        const errorDiv = document.createElement('div');
-        errorDiv.className = 'd-flex align-items-center justify-content-center h-100 text-center';
-        errorDiv.style.padding = '2rem';
-
-        let errorIcon = 'fas fa-exclamation-triangle';
-        let errorTitle = 'Error rendering diagram';
-        let errorClass = 'text-danger';
-
-        // Special handling for PlantUML errors
-        if (error.message.includes('PlantUML')) {
-            errorIcon = 'fas fa-code-branch';
-            errorTitle = 'PlantUML Rendering Error';
-            errorClass = 'text-warning';
-        }
-
-        errorDiv.innerHTML = `
-            <div class="${errorClass}" style="max-width: 600px;">
-                <i class="${errorIcon} fa-4x mb-4"></i>
-                <h4 class="mb-3">${errorTitle}</h4>
-                <div class="alert alert-${errorClass === 'text-warning' ? 'warning' : 'danger'} p-3">
-                    <strong>Error Details:</strong><br>
-                    ${error.message}
-                </div>
-                <small class="text-muted mt-3 d-block">
-                    Check your diagram syntax and try again.
-                </small>
-            </div>
-        `;
-
-        this.elements.diagramPreview.appendChild(errorDiv);
-
-        // Also show notification for PlantUML errors
-        if (error.message.includes('PlantUML')) {
-            this.showNotification(`PlantUML Error: ${error.message}`, 'warning');
-        }
+    /**
+     * Adds error to error panel
+     * @param {Error} error - Error object
+     * @private
+     */
+    addError(error) {
+        this.errorPanelManager.addError(error);
     }
 
     /**
@@ -886,7 +506,7 @@ export class DiagramView {
             this.elements.fileLocation.value = parentPath;
             
             if (fileType) {
-                this.elements.fileNameInput.value = this.getDefaultFileName(fileType);
+                this.elements.fileNameInput.value = this.controller.getDefaultFileName(fileType);
             }
             
             this.elements.fileTypeModal.show();
@@ -900,63 +520,38 @@ export class DiagramView {
      */
     populateFolderOptions(selectedPath = '/') {
         if (!this.elements.fileLocation) return;
-        
+
         // Clear existing options except root
         while (this.elements.fileLocation.children.length > 1) {
             this.elements.fileLocation.removeChild(this.elements.fileLocation.lastChild);
         }
-        
-        // Add folder options
-        const project = window.diagramApp ? window.diagramApp.model.getCurrentProject() : null;
-        if (project) {
-            this.addFolderOptions(project.files, 'root', selectedPath);
-        }
-    }
 
-    /**
-     * Recursively adds folder options
-     * @param {Object} files - Files collection
-     * @param {string} itemId - Current item ID
-     * @param {string} selectedPath - Selected path
-     * @private
-     */
-    addFolderOptions(files, itemId, selectedPath) {
-        const item = files[itemId];
-        if (!item || item.type !== 'folder') return;
+        // Add folder options using FileSystem API
+        if (this.model && this.model.fileSystem) {
+            const folderPaths = this.model.fileSystem.getFolderPathStrings();
 
-        const isRoot = itemId === 'root' || item.path === '/';
-        if (!isRoot) {
-            const option = document.createElement('option');
-            option.value = item.path;
-            option.textContent = item.path;
-            if (item.path === selectedPath) {
-                option.selected = true;
+            // Add root option
+            const rootOption = document.createElement('option');
+            rootOption.value = '/';
+            rootOption.textContent = '/';
+            if (selectedPath === '/') {
+                rootOption.selected = true;
             }
-            this.elements.fileLocation.appendChild(option);
-        }
+            this.elements.fileLocation.appendChild(rootOption);
 
-        // Add subfolders
-        if (Array.isArray(item.children)) {
-            item.children.forEach(childId => {
-                this.addFolderOptions(files, childId, selectedPath);
+            // Add folder options
+            folderPaths.forEach(path => {
+                if (path !== '/') { // Skip root since we added it separately
+                    const option = document.createElement('option');
+                    option.value = path;
+                    option.textContent = path;
+                    if (path === selectedPath) {
+                        option.selected = true;
+                    }
+                    this.elements.fileLocation.appendChild(option);
+                }
             });
         }
-    }
-
-    /**
-     * Gets default file name for a type
-     * @param {string} type - File type
-     * @returns {string} Default filename
-     * @private
-     */
-    getDefaultFileName(type) {
-        const defaults = {
-            mermaid: 'diagram.mmd',
-            plantuml: 'diagram.puml',
-            txt: 'document.txt',
-            md: 'README.md'
-        };
-        return defaults[type] || 'new-file.txt';
     }
 
     /**
@@ -965,48 +560,7 @@ export class DiagramView {
      * @public
      */
     startInlineEdit(itemId) {
-        // Prevent any default event handling
-        event?.preventDefault();
-        event?.stopPropagation();
-        
-        const item = document.querySelector(`.tree-item[data-id="${itemId}"]`);
-        if (!item) return;
-        
-        const nameSpan = item.querySelector('.name');
-        if (!nameSpan) return;
-        
-        const currentName = nameSpan.textContent;
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.value = currentName;
-        input.className = 'inline-edit-input';
-        input.style.width = `${Math.max(nameSpan.offsetWidth, 100)}px`;
-        
-        // Replace span with input
-        nameSpan.parentNode.replaceChild(input, nameSpan);
-        input.focus();
-        input.select();
-        
-        // Store original name for cancel
-        input.dataset.originalName = currentName;
-        input.dataset.itemId = itemId;
-        
-        // Event handlers
-        input.addEventListener('blur', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            this.finishInlineEdit(input, false);
-        });
-        input.addEventListener('keydown', (e) => {
-            e.stopPropagation();
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                this.finishInlineEdit(input, false);
-            } else if (e.key === 'Escape') {
-                e.preventDefault();
-                this.finishInlineEdit(input, true);
-            }
-        });
+        startInlineEditHelper(itemId);
     }
 
     /**
@@ -1016,38 +570,7 @@ export class DiagramView {
      * @private
      */
     finishInlineEdit(input, cancel) {
-        const itemId = input.dataset.itemId;
-        const newName = cancel ? input.dataset.originalName : input.value.trim();
-        
-        // Check if input is still a child of its parent
-        if (!input.parentNode || !input.parentNode.contains(input)) {
-            return; // Input was already replaced or removed
-        }
-        
-        // Replace input back to span
-        const span = document.createElement('span');
-        span.className = 'name';
-        span.textContent = newName;
-        span.setAttribute('ondblclick', `window.diagramApp.view.startInlineEdit('${itemId}')`);
-        
-        try {
-            input.parentNode.replaceChild(span, input);
-        } catch (error) {
-            console.warn('Failed to replace input element:', error);
-            return;
-        }
-        
-        // Save if not cancelled and name changed
-        if (!cancel && newName && newName !== input.dataset.originalName) {
-            try {
-                window.diagramApp.controller.handleInlineRename(itemId, newName);
-            } catch (error) {
-                console.error('Rename failed:', error);
-                // Revert visual change
-                span.textContent = input.dataset.originalName;
-                this.showNotification('Failed to rename item', 'error');
-            }
-        }
+        finishInlineEditHelper(input, cancel);
     }
 
     /**
@@ -1057,21 +580,7 @@ export class DiagramView {
      * @public
      */
     showNotification(message, type = 'info') {
-        const notification = document.createElement('div');
-        notification.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
-        notification.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
-        notification.innerHTML = `
-            ${message}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        `;
-
-        document.body.appendChild(notification);
-
-        setTimeout(() => {
-            if (notification.parentNode) {
-                notification.parentNode.removeChild(notification);
-            }
-        }, 3000);
+        showNotificationHelper(message, type);
     }
 
     /**
@@ -1192,121 +701,6 @@ export class DiagramView {
     }
 
     /**
-     * Retrieves the current diagram content from editor or model
-     * @returns {string|null} Diagram content or null if unavailable
-     * @public
-     */
-    getCurrentDiagramContent() {
-        let content = '';
-
-        if (this.editor) {
-            content = this.editor.getValue() || '';
-        }
-
-        if (!content || !content.trim()) {
-            const currentFile = window.diagramApp ? window.diagramApp.model.getCurrentFile() : null;
-            content = currentFile ? currentFile.content || '' : '';
-        }
-
-        return content && content.trim().length ? content : null;
-    }
-
-    /**
-     * Opens diagram content in a new browser tab
-     * @param {string} content - Diagram source
-     * @private
-     */
-    openDiagramInNewTab(content) {
-        const type = this.detectFileType(content);
-
-        if (type === 'mermaid') {
-            this.renderMermaidToNewTab(content);
-        } else if (type === 'plantuml') {
-            this.renderPlantumlToNewTab(content);
-        } else {
-            this.openPlainTextInNewTab(content);
-        }
-    }
-
-    /**
-     * Renders Mermaid content into a new tab
-     * @param {string} content - Mermaid source
-     * @private
-     */
-    async renderMermaidToNewTab(content) {
-        if (!window.mermaid) {
-            this.showNotification('Mermaid library not loaded', 'error');
-            return;
-        }
-
-        const theme = document.documentElement.getAttribute('data-theme') === 'light' ? 'default' : 'dark';
-
-        window.mermaid.initialize({
-            startOnLoad: false,
-            theme,
-            securityLevel: 'loose'
-        });
-
-        try {
-            const { svg } = await window.mermaid.render('new-tab-mermaid-' + Date.now(), content);
-            this.openSvgInNewTab(svg);
-        } catch (error) {
-            this.showNotification(`Mermaid rendering failed: ${error.message}`, 'error');
-        }
-    }
-
-    /**
-     * Renders PlantUML content into a new tab
-     * @param {string} content - PlantUML source
-     * @private
-     */
-    async renderPlantumlToNewTab(content) {
-        if (!window.plantumlEncoder) {
-            this.showNotification('PlantUML encoder not loaded', 'error');
-            return;
-        }
-
-        try {
-            const encoded = window.plantumlEncoder.encode(content);
-            const imageUrl = `https://www.plantuml.com/plantuml/svg/${encoded}`;
-            const response = await fetch(imageUrl);
-
-            if (!response.ok) {
-                throw new Error(`Failed to fetch PlantUML diagram: ${response.statusText}`);
-            }
-
-            const svgText = await response.text();
-            this.openSvgInNewTab(svgText);
-        } catch (error) {
-            this.showNotification(`PlantUML rendering failed: ${error.message}`, 'error');
-        }
-    }
-
-    /**
-     * Opens plain text content in a new tab
-     * @param {string} content - Text content
-     * @private
-     */
-    openPlainTextInNewTab(content) {
-        const blob = new Blob([`<pre style="font-family: monospace; padding: 16px;">${this.escapeHtml(content)}</pre>`], {
-            type: 'text/html'
-        });
-        const url = URL.createObjectURL(blob);
-        window.open(url, '_blank', 'noopener');
-    }
-
-    /**
-     * Opens SVG markup in a new tab
-     * @param {string} svgMarkup - SVG markup
-     * @private
-     */
-    openSvgInNewTab(svgMarkup) {
-        const blob = new Blob([svgMarkup], { type: 'image/svg+xml' });
-        const url = URL.createObjectURL(blob);
-        window.open(url, '_blank', 'noopener');
-    }
-
-    /**
      * Renders plain text in fullscreen
      * @param {string} code - Text content
      * @private
@@ -1344,6 +738,115 @@ export class DiagramView {
     }
 
     /**
+     * Gets the current PanZoom instance from the diagram preview
+     * @returns {PanZoom|null} The PanZoom instance or null if not available
+     * @private
+     */
+    getCurrentPanZoomInstance() {
+        if (!this.elements.diagramPreview) {
+            return null;
+        }
+
+        const svgElement = this.elements.diagramPreview.querySelector('svg');
+        return svgElement ? svgElement._panZoomManager : null;
+    }
+
+    /**
+     * Executes a zoom operation with validation
+     * @param {string} operation - The zoom operation to perform ('zoomIn', 'zoomOut', 'reset')
+     * @param {string} warningMessage - Warning message if operation fails
+     * @private
+     */
+    performZoomOperation(operation, warningMessage) {
+        const panZoom = this.getCurrentPanZoomInstance();
+        if (panZoom && typeof panZoom[operation] === 'function') {
+            panZoom[operation]();
+        } else {
+            console.warn(warningMessage);
+        }
+    }
+
+    /**
+     * Zooms in on the diagram
+     * @public
+     */
+    zoomIn() {
+        this.performZoomOperation('zoomIn', 'PanZoom instance not available for zoom in');
+    }
+
+    /**
+     * Zooms out on the diagram
+     * @public
+     */
+    zoomOut() {
+        this.performZoomOperation('zoomOut', 'PanZoom instance not available for zoom out');
+    }
+
+    /**
+     * Fits the diagram to the container
+     * @public
+     */
+    zoomFit() {
+        const panZoom = this.getCurrentPanZoomInstance();
+        if (panZoom && typeof panZoom.fit === 'function') {
+            panZoom.fit();
+        } else {
+            console.warn('PanZoom instance not available for fit');
+        }
+    }
+
+    /**
+     * Resets zoom and pan to initial state
+     * @public
+     */
+    zoomReset() {
+        this.performZoomOperation('reset', 'PanZoom instance not available for reset');
+    }
+
+    /**
+     * Requests AI repair for the current diagram code
+     * @public
+     */
+    requestAIRepair() {
+        const currentCode = this.getCurrentDiagramContent();
+        if (!currentCode || !currentCode.trim()) {
+            this.showNotification('No diagram code to repair', 'warning');
+            return;
+        }
+
+        const diagramType = detectDiagramType(currentCode);
+        const typeName = diagramType === 'mermaid' ? 'Mermaid' :
+                        diagramType === 'plantuml' ? 'PlantUML' : 'diagram';
+
+        const repairMessage = `I have a ${typeName} diagram with syntax errors. Please fix the following code and provide the corrected version:
+
+        \`\`\`${diagramType}
+        ${currentCode}
+        \`\`\`
+
+        Please analyze the code, identify any syntax errors, and provide the corrected version with a brief explanation of what was wrong and how you fixed it.`;
+
+        // Access the chatbot instance
+        const chatbot = window.diagramApp ? window.diagramApp.chatbot : null;
+        if (chatbot && typeof chatbot.sendMessageProgrammatically === 'function') {
+            chatbot.sendMessageProgrammatically(repairMessage);
+            this.showNotification('AI repair request sent to chatbot', 'info');
+
+            // Expand chatbot panel if collapsed
+            const panel = document.getElementById('chatbot-panel');
+            if (panel && panel.classList.contains('collapsed')) {
+                panel.classList.remove('collapsed');
+                const icon = document.querySelector('#toggle-chatbot-panel i');
+                if (icon) {
+                    icon.className = 'fas fa-chevron-down';
+                }
+            }
+        } else {
+            this.showNotification('Chatbot not available for AI repair', 'error');
+        }
+    }
+
+    /**
      * Initializes the Ace Editor
      * @private
      */
@@ -1377,5 +880,7 @@ export class DiagramView {
 
 }
 
-// Default export for convenience
+/**
+ * Default export for convenience
+ */
 export default DiagramView;

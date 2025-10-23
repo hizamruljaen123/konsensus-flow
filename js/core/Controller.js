@@ -444,7 +444,7 @@ export class DiagramController {
      * Gets default file name for a type
      * @param {string} type - File type
      * @returns {string} Default filename
-     * @private
+     * @public
      */
     getDefaultFileName(type) {
         const defaults = {
@@ -711,15 +711,7 @@ Learn more about Markdown: [Markdown Guide](https://www.markdownguide.org/)`
         }
 
         // Configure Mermaid for PNG export
-        window.mermaid.initialize({
-            startOnLoad: false,
-            theme: 'default',
-            securityLevel: 'loose',
-            flowchart: {
-                useMaxWidth: true,
-                htmlLabels: true
-            }
-        });
+        window.mermaid.initialize(this.getMermaidConfig('default'));
 
         return new Promise((resolve, reject) => {
             // Create a temporary container for rendering
@@ -732,16 +724,8 @@ Learn more about Markdown: [Markdown Guide](https://www.markdownguide.org/)`
 
             const renderCallback = async (svgCode, bindFunctions) => {
                 try {
-                    container.innerHTML = svgCode;
-
-                    // Find the SVG element
-                    const svgElement = container.querySelector('svg');
-                    if (!svgElement) {
-                        throw new Error('No SVG element found');
-                    }
-
-                    // Convert SVG to PNG using canvas
-                    const pngBlob = await this.svgElementToPng(svgElement);
+                    // Convert SVG string to PNG using unified method
+                    const pngBlob = await this.convertSvgToPng(svgCode);
                     document.body.removeChild(container);
                     resolve(pngBlob);
                 } catch (error) {
@@ -775,12 +759,17 @@ Learn more about Markdown: [Markdown Guide](https://www.markdownguide.org/)`
     }
 
     /**
-     * Converts an SVG DOM element to PNG blob
-     * @param {SVGElement} svgElement - SVG DOM element
+     * Converts SVG (element or string) to PNG blob
+     * @param {SVGElement|string} svgInput - SVG DOM element or SVG string
+     * @param {Object} [options={}] - Conversion options
+     * @param {number} [options.minWidth=800] - Minimum canvas width
+     * @param {number} [options.minHeight=600] - Minimum canvas height
      * @returns {Promise<Blob>} PNG blob
      * @private
      */
-    svgElementToPng(svgElement) {
+    async convertSvgToPng(svgInput, options = {}) {
+        const { minWidth = 800, minHeight = 600 } = options;
+
         return new Promise((resolve, reject) => {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
@@ -790,16 +779,29 @@ Learn more about Markdown: [Markdown Guide](https://www.markdownguide.org/)`
             img.crossOrigin = 'anonymous';
 
             // Get SVG dimensions
-            const viewBox = svgElement.getAttribute('viewBox');
+            let viewBox = null;
+            let svgString = '';
+
+            if (typeof svgInput === 'string') {
+                // Input is SVG string
+                svgString = svgInput;
+                const parser = new DOMParser();
+                const svgDoc = parser.parseFromString(svgString, 'image/svg+xml');
+                const svgElement = svgDoc.documentElement;
+                viewBox = svgElement.getAttribute('viewBox');
+            } else {
+                // Input is SVG element
+                svgString = new XMLSerializer().serializeToString(svgInput);
+                viewBox = svgInput.getAttribute('viewBox');
+            }
 
             if (viewBox) {
                 const [, , width, height] = viewBox.split(' ').map(Number);
-                canvas.width = Math.max(width, 800);
-                canvas.height = Math.max(height, 600);
+                canvas.width = Math.max(width, minWidth);
+                canvas.height = Math.max(height, minHeight);
             } else {
-                const bbox = svgElement.getBoundingClientRect();
-                canvas.width = Math.max(bbox.width || 800, 800);
-                canvas.height = Math.max(bbox.height || 600, 600);
+                canvas.width = minWidth;
+                canvas.height = minHeight;
             }
 
             img.onload = () => {
@@ -811,7 +813,7 @@ Learn more about Markdown: [Markdown Guide](https://www.markdownguide.org/)`
                         if (blob) {
                             resolve(blob);
                         } else {
-                            reject(new Error('Failed to create PNG blob from SVG element'));
+                            reject(new Error('Failed to create PNG blob from SVG'));
                         }
                     }, 'image/png', 1.0);
                 } catch (drawError) {
@@ -823,148 +825,12 @@ Learn more about Markdown: [Markdown Guide](https://www.markdownguide.org/)`
                 reject(new Error(`SVG image failed to load: ${error.type || 'Unknown error'}`));
             };
 
-            // Convert SVG element to string and create data URL
+            // Convert SVG to data URL
             try {
-                const svgString = new XMLSerializer().serializeToString(svgElement);
-                // Properly encode the SVG for data URL
                 const encodedSvg = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgString);
                 img.src = encodedSvg;
             } catch (encodeError) {
                 reject(new Error(`SVG encoding failed: ${encodeError.message}`));
-            }
-        });
-    }
-
-    /**
-     * Renders diagram content for download purposes
-     * @param {string} content - Diagram content
-     * @param {string} format - Format to render ('svg')
-     * @returns {Promise<Object>} Render result
-     * @private
-     */
-    async renderDiagramForDownload(content, format) {
-        const type = detectDiagramType(content);
-
-        if (type === 'mermaid') {
-            return await this.renderMermaidForDownload(content);
-        } else if (type === 'plantuml') {
-            return await this.renderPlantumlForDownload(content);
-        }
-
-        return null;
-    }
-
-    /**
-     * Renders Mermaid diagram for download
-     * @param {string} content - Mermaid content
-     * @returns {Promise<Object>} Render result
-     * @private
-     */
-    async renderMermaidForDownload(content) {
-        if (!window.mermaid) {
-            throw new Error('Mermaid library not loaded');
-        }
-
-        window.mermaid.initialize({
-            startOnLoad: false,
-            theme: 'default',
-            securityLevel: 'loose',
-            flowchart: {
-                useMaxWidth: true,
-                htmlLabels: true
-            }
-        });
-
-        return new Promise((resolve, reject) => {
-            const tempId = 'temp-download-' + Date.now();
-            window.mermaid.render(tempId, content).then(({ svg }) => {
-                resolve({ content: svg, type: 'svg' });
-            }).catch(reject);
-        });
-    }
-
-    /**
-     * Renders PlantUML diagram for download
-     * @param {string} content - PlantUML content
-     * @returns {Promise<Object>} Render result
-     * @private
-     */
-    async renderPlantumlForDownload(content) {
-        if (!window.plantumlEncoder) {
-            throw new Error('PlantUML encoder not loaded');
-        }
-
-        const encoded = window.plantumlEncoder.encode(content);
-        const svgUrl = `https://www.plantuml.com/plantuml/svg/${encoded}`;
-
-        const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="800" height="600">
-            <image xlink:href="${svgUrl}" width="100%" height="100%"/>
-        </svg>`;
-
-        return { content: svgContent, type: 'svg' };
-    }
-
-    /**
-     * Converts SVG string to PNG blob
-     * @param {string} svgString - SVG content as string
-     * @returns {Promise<Blob>} PNG blob
-     * @private
-     */
-    convertSvgToPng(svgString) {
-        return new Promise((resolve, reject) => {
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            const img = new Image();
-
-            // Enable cross-origin for canvas
-            img.crossOrigin = 'anonymous';
-
-            // Set canvas size based on SVG dimensions
-            const parser = new DOMParser();
-            const svgDoc = parser.parseFromString(svgString, 'image/svg+xml');
-            const svgElement = svgDoc.documentElement;
-
-            const viewBox = svgElement.getAttribute('viewBox');
-            if (viewBox) {
-                const [, , width, height] = viewBox.split(' ').map(Number);
-                canvas.width = Math.max(width, 800); // Minimum width
-                canvas.height = Math.max(height, 600); // Minimum height
-            } else {
-                canvas.width = 800;
-                canvas.height = 600;
-            }
-
-            img.onload = () => {
-                try {
-                    ctx.clearRect(0, 0, canvas.width, canvas.height);
-                    ctx.drawImage(img, 0, 0);
-
-                    canvas.toBlob((blob) => {
-                        if (blob) {
-                            resolve(blob);
-                        } else {
-                            reject(new Error('Failed to create PNG blob'));
-                        }
-                    }, 'image/png', 1.0);
-                } catch (drawError) {
-                    reject(new Error(`Canvas drawing failed: ${drawError.message}`));
-                }
-            };
-
-            img.onerror = (error) => {
-                console.error('Image load error:', error);
-                console.error('SVG content length:', svgString.length);
-                console.error('SVG content preview:', svgString.substring(0, 500));
-                reject(new Error(`Image failed to load: ${error.type || 'Unknown error'}`));
-            };
-
-            // Use data URL instead of blob URL to avoid CORS issues
-            try {
-                const encodedSvg = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgString);
-                img.src = encodedSvg;
-            } catch (encodeError) {
-                console.error('Encoding error:', encodeError);
-                reject(new Error(`Encoding failed: ${encodeError.message}`));
             }
         });
     }
@@ -989,27 +855,21 @@ Learn more about Markdown: [Markdown Guide](https://www.markdownguide.org/)`
     }
 
     /**
-     * Detects diagram type from content
-     * @param {string} content - Content to analyze
-     * @returns {string} Diagram type
+     * Gets Mermaid configuration for rendering
+     * @param {string} [theme='default'] - Theme to use
+     * @returns {Object} Mermaid configuration object
      * @private
      */
-    getItemPath(itemId) {
-        const item = this.model.fileSystem.getItem(itemId);
-        return item ? item.path : null;
-    }
-
-    /**
-     * Handles item renaming
-     * @private
-     */
-    handleRenameItem() {
-        if (this.view.contextMenuTarget) {
-            const item = this.model.fileSystem.getItem(this.view.contextMenuTarget);
-            if (item) {
-                this.view.showRenameModal(item.name);
+    getMermaidConfig(theme = 'default') {
+        return {
+            startOnLoad: false,
+            theme,
+            securityLevel: 'loose',
+            flowchart: {
+                useMaxWidth: true,
+                htmlLabels: true
             }
-        }
+        };
     }
 
     /**
@@ -1049,16 +909,20 @@ Learn more about Markdown: [Markdown Guide](https://www.markdownguide.org/)`
 
     /**
      * Handles item deletion
+     * @param {string} [itemId] - Item identifier (optional, uses context menu target if not provided)
      * @private
      */
-    handleDeleteItem() {
-        if (this.view.contextMenuTarget) {
-            const item = this.model.fileSystem.getItem(this.view.contextMenuTarget);
-            if (item && confirm(`Are you sure you want to delete "${item.name}"?`)) {
-                this.model.deleteItem(this.view.contextMenuTarget);
-                this.view.update(this.model);
-                this.view.showNotification('Item deleted!', 'success');
-            }
+    handleDeleteItem(itemId = null) {
+        const targetId = itemId || this.view.contextMenuTarget;
+        if (!targetId) {
+            return;
+        }
+
+        const item = this.model.fileSystem.getItem(targetId);
+        if (item && confirm(`Are you sure you want to delete "${item.name}"?`)) {
+            this.model.deleteItem(targetId);
+            this.view.update(this.model);
+            this.view.showNotification('Item deleted!', 'success');
         }
     }
 

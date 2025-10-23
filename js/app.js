@@ -17,8 +17,6 @@
 import { DiagramModel } from './core/Model.js';
 import { DiagramView } from './core/View.js';
 import { DiagramController } from './core/Controller.js';
-
-// Import rendering engine
 import { RenderingEngine } from './rendering/RenderingEngine.js';
 
 // Import chatbot
@@ -102,7 +100,7 @@ class DiagramIDE {
             // Create core components
             this.renderingEngine = new RenderingEngine();
             this.model = new DiagramModel();
-            this.view = new DiagramView();
+            this.view = new DiagramView({ renderingEngine: this.renderingEngine });
             this.controller = new DiagramController(this.model, this.view);
 
             // Initialize chatbot
